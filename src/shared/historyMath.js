@@ -1,6 +1,6 @@
 // Shared by the Vercel API (api/history.js, api/ems-push.js) and the browser.
 // A "sample" is a compact copy of the live floor taken every 5 minutes:
-//   { t: ISO time, e: factory eff %, r: running looms, n: total looms, m: { 'WJ-01': [running 1/0, eff, production m, stops] } }
+//   { t: ISO time, e: factory eff %, r: running looms, n: total looms, m: { 'WJ-01': [running 1/0, eff, production m, stops, quality] } }
 // Production and stop counters in the EMS reset at shift change, so totals are built
 // from the positive steps between samples (a drop = counter reset → count the new value).
 
@@ -20,7 +20,7 @@ export function makeSample(snapshot) {
   const m = {}
   for (const x of snapshot.machines || []) {
     if (!x?.id) continue
-    m[x.id] = [x.status === 'running' ? 1 : 0, round1(x.efficiency), round1(x.production), Math.round(x.stopCount ?? 0)]
+    m[x.id] = [x.status === 'running' ? 1 : 0, round1(x.efficiency), round1(x.production), Math.round(x.stopCount ?? 0), String(x.fabric || '').slice(0, 60)]
   }
   const s = snapshot.summary || {}
   const list = Object.values(m)
@@ -42,6 +42,7 @@ function step(prev, cur) {
 export function aggregateDay(samples, date) {
   const list = [...samples].filter(Boolean).sort((a, b) => (a.t < b.t ? -1 : 1))
   const looms = {}
+  const quals = {}
   const hours = Array.from({ length: 24 }, (_, h) => ({ h, prod: 0, eff: [], run: [] }))
   for (let i = 0; i < list.length; i++) {
     const s = list[i]
@@ -57,6 +58,11 @@ export function aggregateDay(samples, date) {
         const p = step(pv[2], v[2])
         L.prod += p
         hr.prod += p
+        if (v[4]) {
+          const Q = (quals[v[4]] ||= { quality: v[4], prod: 0, looms: new Set() })
+          Q.prod += p
+          Q.looms.add(id)
+        }
         L.stops += step(pv[3], v[3])
         if (!v[0]) L.downMin += gapMin
       }
@@ -88,6 +94,9 @@ export function aggregateDay(samples, date) {
     downHours: round1(loomList.reduce((a, l) => a + l.downMin, 0) / 60),
     hourly: hours.map((h) => ({ h: h.h, prod: Math.round(h.prod), eff: h.eff.length ? round1(avg(h.eff)) : null, run: h.run.length ? round1(avg(h.run)) : null })),
     looms: loomList,
+    qualities: Object.values(quals)
+      .map((q) => ({ quality: q.quality, prod: Math.round(q.prod), looms: [...q.looms].sort() }))
+      .sort((a, b) => b.prod - a.prod),
   }
 }
 

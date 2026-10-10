@@ -93,6 +93,8 @@ export const useFactoryStore = create((set, get) => ({
   historyError: null,
   setHistory: (history) => set({ history, historyError: null }),
   setHistoryError: (historyError) => set({ historyError }),
+  beamHistory: null, // { at, beams } from services/qualityHistory (every beam the EMS has on record)
+  setBeamHistory: (beamHistory) => set({ beamHistory }),
   reportsOpen: false,
   reportsTab: 'today',
   setReportsOpen: (reportsOpen, reportsTab) => set((st) => ({ reportsOpen, reportsTab: reportsTab || st.reportsTab })),

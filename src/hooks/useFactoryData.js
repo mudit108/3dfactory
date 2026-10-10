@@ -4,6 +4,7 @@ import { loadSettings } from '../services/settingsService'
 import { useFactoryStore } from './useFactoryStore'
 import { readViewport } from './useViewport'
 import { fetchHistory, HISTORY_MODE } from '../services/historyApi'
+import { fetchBeamLog, toBeams } from '../services/qualityHistory'
 
 /** Loads the factory snapshot once and keeps machine data live. */
 export function useFactoryData() {
@@ -27,6 +28,21 @@ export function useFactoryData() {
         .catch((e) => alive && useFactoryStore.getState().setHistoryError(e.message))
     load()
     const t = setInterval(load, 5 * 60000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [])
+
+  // beam / quality history: on start, then every 30 minutes
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      fetchBeamLog()
+        .then((r) => alive && useFactoryStore.getState().setBeamHistory({ at: r.at, demo: !!r.demo, beams: toBeams(r.log) }))
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 30 * 60000)
     return () => {
       alive = false
       clearInterval(t)

@@ -1,6 +1,7 @@
 import { beamPlan, operatorStats, fmtEtaShort } from './planning'
 import { combineDays } from '../shared/historyMath'
 import { dailyReportText } from './reportText'
+import { qualityStats, matchQualities, loomBeams, fmtDate, fmtDays } from './qualityHistory'
 
 // Factory assistant: answers questions from the live numbers on screen. No AI service, no cost, no
 // internet call - it reads the same data the 3D factory already has and works out the answers in code,
@@ -270,9 +271,55 @@ function textReport(ctx) {
   return { lines: text.split('\n').filter(Boolean).map((l) => l.replace(/\*/g, '')), copy: text, chips: ['Open reports'] }
 }
 
+// ---------- quality history (EMS beam list) ----------
+function qualityReport(list) {
+  const q = list[0]
+  const lines = [
+    `${q.name}: ${q.count} beam${q.count === 1 ? '' : 's'} on ${q.looms.length} loom${q.looms.length === 1 ? '' : 's'}, ${nf(q.metres)} m of beam, from ${fmtDate(q.first)} to ${q.running.length ? 'now' : fmtDate(q.last)}.`,
+  ]
+  lines.push(q.running.length ? `Running now on ${q.running.join(', ')}.` : `Not running now. Last ran ${fmtDate(q.last)}.`)
+  if (q.avgDays != null) lines.push(`A beam of this quality took about ${fmtDays(q.avgDays)} on average.`)
+  lines.push(`Looms: ${q.looms.slice(0, 10).map((l) => `${l.id} (${l.n})`).join(', ')}${q.looms.length > 10 ? '…' : ''}.`)
+  if (list.length > 1) lines.push(`Also matching: ${list.slice(1, 4).map((x) => x.name).join(', ')}.`)
+  return {
+    lines,
+    rows: q.beams.slice(0, 8).map((b) => ({ id: b.loom, left: b.loom, sub: `beam ${b.beamNo} · ${fmtDate(b.loadAt)} → ${b.running ? 'now' : fmtDate(b.endAt)}`, right: `${nf(b.metres)} m` })),
+    chips: ['Quality history', 'Open qualities'],
+  }
+}
+
+function qualitiesList(stats) {
+  const recent = stats.filter((q) => q.last > Date.now() - 90 * 86400000).sort((a, b) => b.metres - a.metres)
+  return {
+    lines: [`${recent.length} qualities ran in the last 90 days (${stats.length} on record). Most beam metres first:`],
+    rows: recent.slice(0, 12).map((q) => ({ left: q.name, sub: `${q.count} beams · ${q.looms.length} looms · last ${q.running.length ? 'now' : fmtDate(q.last)}`, right: `${nf(q.metres)} m` })),
+    chips: ['Open qualities', 'What fabrics are running?'],
+  }
+}
+
+function loomHistoryReport(m, beams) {
+  const list = loomBeams(beams, m.id)
+  if (!list.length) return { lines: [`No beam history for ${m.id} yet.`], focus: m.id }
+  const runs = []
+  for (const b of list) {
+    const last = runs[runs.length - 1]
+    if (last && last.key === b.key) {
+      last.n++
+      last.metres += b.metres || 0
+      last.from = b.loadAt
+    } else runs.push({ key: b.key, quality: b.quality, n: 1, metres: b.metres || 0, from: b.loadAt, to: b.endAt, running: b.running })
+  }
+  return {
+    lines: [`${m.id} has had ${list.length} beams since ${fmtDate(list[list.length - 1].loadAt)}, ${new Set(list.map((b) => b.key)).size} different qualities. Newest first:`],
+    rows: runs.slice(0, 10).map((r) => ({ left: r.quality, sub: `${r.n} beam${r.n === 1 ? '' : 's'} · ${fmtDate(r.from)} → ${r.running ? 'now' : fmtDate(r.to)}`, right: `${nf(r.metres)} m` })),
+    focus: m.id,
+    chips: ['Quality history', 'Open qualities'],
+  }
+}
+
 function help() {
   return {
-    lines: ['I read the live factory numbers and answer from them. Try asking:', '- "Factory summary" or "morning report"', '- "Which looms are stopped?"', '- "Beams finishing first" / "spare beams"', '- "Production today", "lowest efficiency", "most stops"', '- "How is loom 12?" or "WJ-07"', '- "Which looms run MILTON?", "who is on loom 5?", "alerts"', '- "Yesterday", "last 7 days", "beam plan", "operator ranking"', '- "WhatsApp report", "open reports", "heatmap efficiency"'],
+    lines: ['I read the live factory numbers and answer from them. Try asking:', '- "Factory summary" or "morning report"', '- "Which looms are stopped?"', '- "Beams finishing first" / "spare beams"', '- "Production today", "lowest efficiency", "most stops"', '- "How is loom 12?" or "WJ-07"', '- "Which looms run MILTON?", "who is on loom 5?", "alerts"', '- "Yesterday", "last 7 days", "beam plan", "operator ranking"', '- "WhatsApp report", "open reports", "heatmap efficiency"', '- "Where did MILTON run?", "loom 6 history", "quality history"'],
     chips: SUGGESTIONS.slice(0, 4),
   }
 }
@@ -289,12 +336,22 @@ export function answer(question, ctx) {
 
   const loom = findLoom(q, ctx.machines)
   if (loom?.missing) return done({ lines: [`I can't find ${loom.missing}. Looms are numbered 01 to ${String(ctx.machines.length).padStart(2, '0')}.`] })
+  const beamsHist = ctx.beamHistory?.beams?.length ? ctx.beamHistory.beams : null
+  const pastWords = has(q, 'history', 'past', 'pehle', 'before', 'previous', 'earlier', 'used', 'ran ', 'did ', 'kab', 'kahan', 'last time', 'itihas', 'purana', 'old ')
+  if (loom && beamsHist && (pastWords || has(q, 'qualities'))) return done(loomHistoryReport(loom, beamsHist))
   if (loom && !has(q, 'operator')) return done(loomReport(loom, ctx))
   if (loom && has(q, 'operator')) {
     const op = ctx.staffing?.machineOperator?.[loom.id]
     return done({ lines: [op ? `${loom.id} is looked after by ${op.name}.` : `No operator is assigned to ${loom.id} today.`], focus: loom.id })
   }
 
+  if (has(q, 'open qualit')) return done({ lines: ['Opening Reports → Qualities.'], action: { type: 'reports', tab: 'qualities' } })
+  if (beamsHist && (pastWords || has(q, 'qualities', 'quality history', 'all quality', 'quality list'))) {
+    const stats = qualityStats(beamsHist)
+    const hit = matchQualities(stats, q)
+    if (hit.length) return done(qualityReport(hit))
+    if (has(q, 'qualit')) return done(qualitiesList(stats))
+  }
   if (has(q, 'open report', 'reports', 'chart', 'graph')) return done({ lines: ['Opening Reports.'], action: { type: 'reports' } })
   if (has(q, 'heatmap', 'heat map', 'colour by', 'color by', 'colour', 'color')) {
     const id = has(q, 'off', 'hide', 'band') ? 'off' : has(q, 'prod', 'meter') ? 'production' : has(q, 'stop') ? 'stops' : has(q, 'beam') ? 'beam' : 'efficiency'

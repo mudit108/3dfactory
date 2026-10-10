@@ -120,3 +120,11 @@ The EMS is a web app (not a JSON API), so a small read-only bridge in `bridge/` 
 Phones (under 768 px wide) get a normal app with bottom tabs — `src/ui/PhoneApp.jsx`:
 Home (big numbers, needs-attention list, operators, quick actions) · Looms (search, filters, sort, a card per loom → full loom page) · 3D view (the factory, loaded only on this tab) · Reports · Ask.
 Tablets and computers keep the full 3D layout.
+
+## Quality history
+
+The bridge reads the whole EMS beam list (every beam ever loaded: loom, quality, beam no., pick, length, load date) and sends it to `/api/beams` whenever it changes (new beam loaded) or every 30 min. A beam counts as finished when the EMS gives an end date or the next beam is loaded on that loom.
+- Reports → **Qualities**: every quality with beams, looms, dates, average days per beam; tap one for its beam timeline.
+- Each loom's page ends with its **Quality history**.
+- Assistant: "where did MILTON run?", "loom 6 history", "quality history".
+- From now on the 5-minute snapshots also record each loom's quality, so exact fabric metres per quality are counted per day.

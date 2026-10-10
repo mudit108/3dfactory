@@ -240,6 +240,7 @@ async function refreshBeamsInner() {
   try {
     // Beam Detail list. Columns: 8 loadDate, 9 endDate, 10 machine, 11 beamNo, 12 pbno, 14 size, 15 quality, 17 pick, 18 mtrs, 19 alertMtrs, 21 tar, 22 reed, 23 panno
     const rows = await getJson('beam/grid/r/true?fdate=&ftodate=&fbeamnumber=&searchType=&fmachineid=&fqualityid=')
+    buildBeamLog(rows)
     const by = new Map()
     for (const r of rows) {
       if (!Array.isArray(r) || r[9]) continue // finished beam
@@ -269,6 +270,34 @@ async function refreshBeamsInner() {
     }
   } catch {}
 }
+// Every beam ever loaded (the EMS keeps the whole list): which quality ran on which loom and when.
+// A beam ends when the EMS says so, or when the next beam is loaded on the same loom.
+// Compact rows: [loomNo, loadedMs, endedMs|0, beamNo, quality, pick, metres]
+let beamLog = { rows: [], hash: '', at: 0 }
+function buildBeamLog(rows) {
+  const seen = new Set()
+  const list = []
+  for (const r of rows) {
+    if (!Array.isArray(r)) continue
+    const n = parseInt(r[10], 10)
+    const t = parseEmsDate(r[8])
+    if (!n || !t) continue
+    const key = `${n}|${r[11]}|${r[8]}`
+    if (seen.has(key)) continue // same beam entered twice
+    seen.add(key)
+    list.push([n, t, parseEmsDate(r[9]) || 0, String(r[11] ?? ''), String(r[15] ?? '').trim(), num(r[17]) ?? 0, num(r[18]) ?? 0])
+  }
+  list.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  for (let i = 0; i < list.length; i++) {
+    const next = list[i + 1]
+    if (!list[i][2] && next && next[0] === list[i][0] && next[1] > list[i][1] + 10 * 60000) list[i][2] = next[1]
+  }
+  // a second beam loaded at the same moment (double-beam loom) ends with the first
+  for (let i = list.length - 2; i >= 0; i--) if (!list[i][2] && list[i + 1][0] === list[i][0] && list[i + 1][1] - list[i][1] <= 10 * 60000) list[i][2] = list[i + 1][2]
+  const hash = `${list.length}:${list.reduce((a, r) => (a + r[1] + r[2]) % 1e12, 0)}`
+  if (hash !== beamLog.hash) beamLog = { rows: list, hash, at: Date.now() }
+}
+
 function trackBeam(n, meters) {
   if (meters === undefined) return undefined
   const now = Date.now()
@@ -484,21 +513,25 @@ const PUSH_MS = Number(env.PUSH_MS || 15000)
 let pushState = { enabled: !!(PUSH_URL && PUSH_TOKEN), lastOk: null, lastError: null, count: 0 }
 let lastPushedAt = 0
 let lastPushTry = 0
+let logSent = { hash: '', at: 0 }
 async function pushOnce() {
   const st = status()
   if (!st.ok || !good) return
   if (good.at === lastPushedAt && Date.now() - lastPushTry < 25000) return // unchanged: still re-send every ~25 s so the site knows we are alive
   lastPushTry = Date.now()
   const sent = good.at
+  // the full beam list is big, so it goes only when it changed (new beam loaded) or every 30 min
+  const sendLog = beamLog.rows.length > 0 && (beamLog.hash !== logSent.hash || Date.now() - logSent.at > 30 * 60000)
   try {
     const res = await fetch(PUSH_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${PUSH_TOKEN}`, ...(PUSH_BYPASS ? { 'x-vercel-protection-bypass': PUSH_BYPASS } : {}) },
-      body: JSON.stringify({ at: st.at, summary: st.summary, machines: st.machines }),
+      body: JSON.stringify({ at: st.at, summary: st.summary, machines: st.machines, ...(sendLog ? { beamLog: beamLog.rows } : {}) }),
       signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) throw new Error(`Vercel answered HTTP ${res.status}${res.status === 401 ? ' (PUSH_TOKEN does not match, or Vercel Authentication is blocking: set PUSH_BYPASS)' : ''}`)
     lastPushedAt = sent
+    if (sendLog) logSent = { hash: beamLog.hash, at: Date.now() }
     pushState = { ...pushState, lastOk: new Date().toISOString(), lastError: null, count: pushState.count + 1 }
   } catch (e) {
     if (pushState.lastError !== e.message) console.warn(`! push to Vercel failed: ${e.message}`)
@@ -640,7 +673,8 @@ async function main() {
         if (!st.ok) { res.writeHead(503, cors); return res.end(JSON.stringify(st)) }
         res.writeHead(200, cors); return res.end(JSON.stringify({ at: st.at, summary: st.summary, machines: st.machines }))
       }
-      if (url === '/api/health') { res.writeHead(200, cors); return res.end(JSON.stringify({ ok: st.ok, reason: st.reason, at: st.at, looms: st.machines.length, login: loginInfo.result, push: pushState, beams: { at: beams.at ? new Date(beams.at).toISOString() : null, running: beams.byNo.size, spare: beams.spare.length, rated: rated.byNo.size, error: beams.err }, ...diag })) }
+      if (url === '/api/beams') { res.writeHead(200, cors); return res.end(JSON.stringify({ at: beamLog.at ? new Date(beamLog.at).toISOString() : null, log: beamLog.rows })) }
+      if (url === '/api/health') { res.writeHead(200, cors); return res.end(JSON.stringify({ ok: st.ok, reason: st.reason, at: st.at, looms: st.machines.length, login: loginInfo.result, push: pushState, beams: { at: beams.at ? new Date(beams.at).toISOString() : null, running: beams.byNo.size, history: beamLog.rows.length, spare: beams.spare.length, rated: rated.byNo.size, error: beams.err }, ...diag })) }
       res.writeHead(404, cors); res.end('{"error":"not found"}')
     })
     .listen(PORT, HOST, () => console.log(`EMS bridge on http://${HOST}:${PORT}  ->  ${EMS_URL}   (read-only)`))

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, X, RefreshCw, Copy, Share2, Download, CalendarDays, Activity, Users, Layers, Clock } from 'lucide-react'
+import QualitiesTab from './QualitiesTab'
+import { Shirt, BarChart3, X, RefreshCw, Copy, Share2, Download, CalendarDays, Activity, Users, Layers, Clock } from 'lucide-react'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { fetchHistory, HISTORY_MODE } from '../services/historyApi'
 import { combineDays } from '../shared/historyMath'
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'looms', label: 'Loom ranking', icon: Activity },
   { id: 'operators', label: 'Operators', icon: Users },
   { id: 'beams', label: 'Beam plan', icon: Layers },
+  { id: 'qualities', label: 'Qualities', icon: Shirt },
 ]
 
 function goLoom(id) {
@@ -305,7 +307,7 @@ function BeamsTab({ machines, summary }) {
   )
 }
 
-const TAB_VIEWS = { today: TodayTab, week: WeekTab, looms: LoomsTab, operators: OperatorsTab, beams: BeamsTab }
+const TAB_VIEWS = { today: TodayTab, week: WeekTab, looms: LoomsTab, operators: OperatorsTab, beams: BeamsTab, qualities: QualitiesTab }
 
 function useReportData() {
   const machines = useFactoryStore((s) => s.machines)

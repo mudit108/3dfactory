@@ -7,6 +7,7 @@ import {
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { focusOnKey } from '../scene/focus'
 import { showLoomIn3D } from './navigate'
+import { LoomQualityHistory } from './QualitiesTab'
 import { inr, inrShort, num, hhmm, STATUS_STYLES } from './format'
 import { RadialGauge, BarChart, LineChart, Donut, ProgressBar, StackedBar } from './charts'
 import { useSummary } from './Hud'
@@ -214,6 +215,15 @@ function LiveMachinePanel({ m, op }) {
 }
 
 export function MachinePanel({ id }) {
+  return (
+    <>
+      <MachinePanelBody id={id} />
+      <LoomQualityHistory id={id} />
+    </>
+  )
+}
+
+function MachinePanelBody({ id }) {
   const m = useFactoryStore((s) => s.machines.find((x) => x.id === id))
   const op = useFactoryStore((s) => s.staffing?.machineOperator[id])
   if (!m) return null

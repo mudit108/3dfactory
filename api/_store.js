@@ -47,3 +47,4 @@ export async function redisPipeline(commands) {
 export const HIST_PREFIX = 'ems:hist:' // + YYYY-MM-DD (India) → hash { bucket: sample JSON }
 export const DAY_PREFIX = 'ems:day:' // + YYYY-MM-DD → cached totals for a finished day
 export const KEEP_SECONDS = 60 * 60 * 24 * 45 // keep 45 days
+export const BEAMLOG_KEY = 'ems:beamlog' // every beam the EMS knows: [loomNo, loadedMs, endedMs, beamNo, quality, pick, metres]

@@ -1,6 +1,6 @@
 // Called by the bridge on the factory PC (outbound only). POST { at, summary, machines } with
 // header  Authorization: Bearer <PUSH_TOKEN>
-import { redis, redisPipeline, sameSecret, KEY, HIST_PREFIX, KEEP_SECONDS } from './_store.js'
+import { redis, redisPipeline, sameSecret, KEY, HIST_PREFIX, KEEP_SECONDS, BEAMLOG_KEY } from './_store.js'
 import { makeSample, istDate, SAMPLE_MINUTES } from '../src/shared/historyMath.js'
 
 // one history sample per 5-minute slot. The slot number is the hash field, so a repeat
@@ -24,6 +24,14 @@ export default async function handler(req, res) {
     await redis('SET', KEY, JSON.stringify(snapshot), 'EX', 600)
   } catch (e) {
     return res.status(500).json({ error: e.message })
+  }
+  // full beam list (sent only when it changes): quality history for the Reports → Qualities tab
+  if (Array.isArray(body.beamLog) && body.beamLog.length <= 20000) {
+    try {
+      await redis('SET', BEAMLOG_KEY, JSON.stringify({ at: new Date().toISOString(), log: body.beamLog }), 'EX', KEEP_SECONDS)
+    } catch {
+      /* not fatal */
+    }
   }
   const slot = Math.floor(Date.now() / (SAMPLE_MINUTES * 60000))
   if (slot !== lastSlot) {

@@ -87,13 +87,13 @@ export function askAssistant(q) {
     const st = useFactoryStore.getState()
     let reply
     try {
-      reply = answer(q, { machines: st.machines, summary: st.emsSummary, staffing: st.staffing, history: st.history, factoryName: st.settings?.general.factoryName || undefined })
+      reply = answer(q, { machines: st.machines, summary: st.emsSummary, staffing: st.staffing, history: st.history, beamHistory: st.beamHistory, factoryName: st.settings?.general.factoryName || undefined })
     } catch (e) {
       reply = { lines: ['Sorry, I could not work that out. Try "factory summary".'] }
     }
     st.setChat((m) => [...m, { role: 'user', text: q }, { role: 'bot', reply }])
     if (reply.focus && !st.phoneMode) goLoom(reply.focus)
-    if (reply.action?.type === 'reports') openReports()
+    if (reply.action?.type === 'reports') openReports(reply.action.tab)
     if (reply.action?.type === 'heatmap') {
       st.setColorBy(reply.action.id)
       if (st.phoneMode && reply.action.id !== 'off') st.setPhoneTab('3d')
