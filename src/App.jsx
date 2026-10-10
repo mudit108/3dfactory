@@ -11,6 +11,7 @@ import { WalkthroughOverlay, PresentationOverlay, LoadingScreen, HelpModal } fro
 import { goToView } from './scene/focus'
 import { useViewport } from './hooks/useViewport'
 import MobileHud from './ui/MobileHud'
+import Assistant from './ui/Assistant'
 
 export default function App() {
   useFactoryData()
@@ -100,6 +101,7 @@ export default function App() {
       <Tooltip />
       <HelpModal />
       <SettingsModal />
+      <Assistant />
       <LoadingScreen />
     </div>
   )

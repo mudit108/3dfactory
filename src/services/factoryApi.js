@@ -18,8 +18,8 @@ import { dispatchData, qualityData, maintenanceTasks, companyInfo } from '../dat
 //  1. bridge  - VITE_EMS_API_URL=http://<factory-pc>:8787   (on the factory PC / its Wi-Fi)
 //  2. cloud   - VITE_EMS_CLOUD=1 on Vercel: the factory PC pushes data to /api/ems and everyone sees it live
 //  3. demo    - nothing set: built-in demo data
-const API_BASE = import.meta.env.VITE_EMS_API_URL || ''
-const CLOUD_ENABLED = !API_BASE && ['1', 'true'].includes(String(import.meta.env.VITE_EMS_CLOUD))
+const CLOUD_ENABLED = ['1', 'true'].includes(String(import.meta.env.VITE_EMS_CLOUD)) // cloud mode wins over a leftover bridge address
+const API_BASE = CLOUD_ENABLED ? '' : import.meta.env.VITE_EMS_API_URL || ''
 const CLOUD_ACTIVE = CLOUD_ENABLED
 export const USING_MOCK = !API_BASE && !CLOUD_ACTIVE
 
