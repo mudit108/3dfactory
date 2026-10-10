@@ -77,6 +77,8 @@ export const Worker = memo(function Worker({
   vest = false,
   scale = 1,
   carryColor = '#ece8de',
+  stops, // distances along `path` where a 'tend' operator stops to work a loom
+  driveRef, // for 'push' / 'drive': { current: { moving } } shared with the vehicle
 }) {
   const look = useLook(appearance)
   const root = useRef()
@@ -112,13 +114,36 @@ export const Worker = memo(function Worker({
     let carrying = null
     const breathe = Math.sin(t * 1.6) * 0.012
 
-    if (info && ['carry', 'carryRoll', 'load', 'walk'].includes(activity)) {
+    let tending = false
+    if (info && ['carry', 'carryRoll', 'load', 'walk', 'tend'].includes(activity)) {
       const w = walker.current
+      if (w.init !== info.total) {
+        w.init = info.total
+        w.d = ((seed * 0.377) % 1) * info.total
+      }
+      let stopped = false
       if (w.wait > 0) {
         w.wait -= dt
       } else {
+        const prev = w.d
         w.d += w.dir * speed * dt
-        if (w.d >= info.total) {
+        if (activity === 'tend' && stops) {
+          for (const sd of stops) {
+            const crossed = (w.dir === 1 && prev < sd && w.d >= sd) || (w.dir === -1 && prev > sd && w.d <= sd)
+            if (crossed && sd !== w.lastStop) {
+              w.d = sd
+              w.lastStop = sd
+              w.wait = 3 + (((sd * 7.13 + seed * 1.7) % 1) + 1) % 1 * 3.5
+              if (sd >= info.total - 1e-3) w.dir = -1
+              if (sd <= 1e-3) w.dir = 1
+              stopped = true
+              break
+            }
+          }
+        }
+        if (stopped) {
+          /* working at a loom */
+        } else if (w.d >= info.total) {
           w.d = info.total
           w.dir = -1
           w.wait = pause
@@ -129,21 +154,22 @@ export const Worker = memo(function Worker({
         } else walking = true
       }
       const p = samplePath(info, w.d)
-      const targetYaw = w.dir === 1 ? p.yaw : p.yaw + Math.PI
-      w.yaw = lerpAngle(w.yaw, w.wait > 0 ? w.yaw : targetYaw, Math.min(1, dt * 6))
+      tending = activity === 'tend' && w.wait > 0
+      const targetYaw = tending ? Math.PI : w.dir === 1 ? p.yaw : p.yaw + Math.PI
+      w.yaw = lerpAngle(w.yaw, w.wait > 0 && !tending ? w.yaw : targetYaw, Math.min(1, dt * 6))
       root.current.position.set(p.x, position[1], p.z)
       root.current.rotation.y = w.yaw
-      const outbound = activity === 'walk' ? false : w.dir === 1 ? w.wait <= 0 || w.d < info.total : false
+      const outbound = activity === 'walk' || activity === 'tend' ? false : w.dir === 1 ? w.wait <= 0 || w.d < info.total : false
       // at the far end the item is being put down
-      carrying = activity === 'walk' ? null : outbound && !(w.wait > 0 && w.d >= info.total) ? (activity === 'carry' ? 'box' : 'roll') : null
-      if (w.wait > 0 && w.d >= info.total && activity !== 'walk') {
+      carrying = activity === 'walk' || activity === 'tend' ? null : outbound && !(w.wait > 0 && w.d >= info.total) ? (activity === 'carry' ? 'box' : 'roll') : null
+      if (w.wait > 0 && w.d >= info.total && activity !== 'walk' && activity !== 'tend') {
         // placing / reaching motion
         const k = Math.sin((1 - w.wait / pause) * Math.PI)
         torsoPitch = 0.45 * k
         lA = rA = -1.1 * k
         lF = rF = -0.4
       }
-      if (w.wait > 0 && w.d <= 0 && activity !== 'walk') {
+      if (w.wait > 0 && w.d <= 0 && activity !== 'walk' && activity !== 'tend') {
         const k = Math.sin((1 - w.wait / pause) * Math.PI)
         torsoPitch = 0.5 * k
         lA = rA = -1.0 * k
@@ -172,6 +198,16 @@ export const Worker = memo(function Worker({
       rA = -2.6
       rF = -1.3
       rAz = -0.15
+    }
+
+    if (tending) {
+      const reach = Math.sin(t * 2.2)
+      lA = -0.9 + reach * 0.15
+      rA = -0.75 - Math.sin(t * 1.7) * 0.2
+      lF = rF = -0.5
+      torsoPitch = 0.14
+      headPitch = 0.3 + Math.sin(t * 0.7) * 0.08
+      headYaw = Math.sin(t * 0.5) * 0.3
     }
 
     switch (activity) {
@@ -233,6 +269,34 @@ export const Worker = memo(function Worker({
         lF = rF = -0.55
         headPitch = 0.12 + Math.sin(t * 0.4) * 0.05
         headYaw = Math.sin(t * 0.23) * 0.2
+        break
+      }
+      case 'push': {
+        // pushing a trolley: walks in place (the vehicle moves the group), arms forward
+        if (driveRef?.current?.moving ?? true) {
+          const ph = t * 6.2
+          const sw = Math.sin(ph)
+          lL = sw * 0.42
+          rL = -sw * 0.42
+          lS = Math.max(0, -sw) * 0.7 + 0.05
+          rS = Math.max(0, sw) * 0.7 + 0.05
+          hipY = 0.96 + Math.abs(Math.cos(ph)) * 0.02 - 0.012
+        }
+        lA = rA = -1.15
+        lF = rF = -0.35
+        lAz = 0.15
+        rAz = -0.15
+        torsoPitch = 0.16
+        headPitch = -0.05
+        break
+      }
+      case 'drive': {
+        hipY = 0.52
+        lL = rL = -Math.PI / 2
+        lS = rS = Math.PI / 2
+        lA = rA = -1.0
+        lF = rF = -0.5
+        headYaw = Math.sin(t * 0.4) * 0.35
         break
       }
       case 'guard':

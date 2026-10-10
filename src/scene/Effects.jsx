@@ -1,4 +1,4 @@
-import { EffectComposer, Bloom, N8AO, Vignette, ToneMapping, SMAA } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, N8AO, Vignette, ToneMapping, SMAA, HueSaturation, BrightnessContrast } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 
@@ -11,6 +11,8 @@ export default function Effects() {
         <N8AO halfRes aoRadius={1.6} intensity={2.0} distanceFalloff={0.6} quality="performance" />
         <Bloom mipmapBlur luminanceThreshold={0.95} luminanceSmoothing={0.2} intensity={0.55} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        <HueSaturation saturation={-0.1} />
+        <BrightnessContrast contrast={0.06} />
         <Vignette offset={0.25} darkness={0.55} />
         <SMAA />
       </EffectComposer>
@@ -20,6 +22,8 @@ export default function Effects() {
     <EffectComposer key="balanced" multisampling={0}>
       <Bloom mipmapBlur luminanceThreshold={0.95} luminanceSmoothing={0.2} intensity={0.4} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      <HueSaturation saturation={-0.1} />
+      <BrightnessContrast contrast={0.06} />
       <Vignette offset={0.25} darkness={0.5} />
       <SMAA />
     </EffectComposer>

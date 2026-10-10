@@ -17,6 +17,7 @@ export const GEO = {
   get sphere() { return memo('sphere', () => new THREE.SphereGeometry(0.5, 20, 14)) },
   get sphereLow() { return memo('sphereLow', () => new THREE.SphereGeometry(0.5, 12, 8)) },
   get plane() { return memo('plane', () => new THREE.PlaneGeometry(1, 1)) },
+  get circle() { return memo('circle', () => new THREE.CircleGeometry(0.5, 24)) },
   get cone() { return memo('cone', () => new THREE.ConeGeometry(0.5, 1, 16)) },
   get hemisphere() { return memo('hemi', () => new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)) },
   get capsule() { return memo('capsule', () => new THREE.CapsuleGeometry(0.5, 1, 4, 10)) },

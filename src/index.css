@@ -44,3 +44,12 @@ html, body, #root {
 @keyframes progress { from { width: 0%; } to { width: 100%; } }
 
 canvas { touch-action: none; }
+
+/* ---- phones: safe areas (notch / home indicator) ---- */
+.safe-top { padding-top: max(0.5rem, env(safe-area-inset-top)); }
+.safe-bottom { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.safe-x { padding-left: max(0.5rem, env(safe-area-inset-left)); padding-right: max(0.5rem, env(safe-area-inset-right)); }
+.safe-y { top: max(0.5rem, env(safe-area-inset-top)); bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+html, body, #root { height: 100dvh; }
+button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+@media (hover: none) { .hover-tooltip { display: none !important; } }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Cog, User, Package, Boxes, Calculator, Briefcase, Truck, DoorOpen, ScanSearch, Gauge, Droplets, Timer, Zap,
   Layers, Activity, Wrench, TriangleAlert, CircleCheck, HardHat, Crosshair, IndianRupee, FileText, TrendingUp, Users,
@@ -91,9 +91,126 @@ const selectMachine = (id) => {
 }
 
 // ---- panels ------------------------------------------------------------------------
+const fmtEta = (h) => {
+  if (h === undefined || h === null || !Number.isFinite(h)) return '-'
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`
+  if (h < 48) return `${Math.floor(h)} h ${Math.round((h % 1) * 60)} m`
+  return `${(h / 24).toFixed(1)} days`
+}
+const fmtClock = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '-')
+const fmtHM = (min) => {
+  if (min === undefined || min === null || !Number.isFinite(min)) return '-'
+  const h = Math.floor(min / 60)
+  const m = Math.floor(min % 60)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+function NotTracked({ label, icon: Icon }) {
+  return (
+    <div className="rounded-xl bg-white/[0.02] p-3 ring-1 ring-dashed ring-white/10">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        {Icon && <Icon className="h-3.5 w-3.5" />} {label}
+      </div>
+      <div className="mt-1 text-[13px] font-semibold text-slate-500">Not tracked</div>
+    </div>
+  )
+}
+
+/** Machine panel when connected to the real EMS: only EMS numbers; everything else says "Not tracked". */
+function LiveMachinePanel({ m, op }) {
+  const st = STATUS_STYLES[m.status]
+  const color = m.emsColor || st.hex
+  const stopped = m.status !== 'running'
+  const beamOver = m.beamMeters !== undefined && m.beamMeters < 0
+  return (
+    <>
+      <Header icon={Cog} kicker="Waterjet Loom · live from EMS" title={m.id} color={color} right={<StatusChip status={m.status} />} />
+      <div className="mt-4 flex items-center gap-4 rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/5">
+        <RadialGauge value={m.efficiency} label={`${m.efficiency}%`} sub="Efficiency" color={color} size={112} />
+        <div className="flex-1 space-y-2">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Production today</div>
+            <div className="text-2xl font-bold tabular-nums text-white">
+              {m.production?.toLocaleString('en-IN', { maximumFractionDigits: 2 })} <span className="text-sm text-slate-400">m</span>
+            </div>
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Operator{' '}
+            {op ? (
+              <button className="font-semibold text-amber-300 hover:underline" onClick={() => selectWorker(op.id)}>
+                {op.name} ({op.id})
+              </button>
+            ) : (
+              <button className="font-semibold text-rose-300 hover:underline" onClick={() => useFactoryStore.getState().setSettingsOpen(true, 'staffing')}>
+                none assigned — fix in Settings
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {(m.alert || m.beamLow || m.shortPick) && (
+        <div className="mt-3 space-y-1.5">
+          {m.alert === 'red' && <div className="flex gap-2 rounded-xl bg-rose-500/10 p-2.5 text-[12px] text-rose-200 ring-1 ring-rose-400/30"><TriangleAlert className="h-4 w-4 shrink-0" /> EMS red alert (Manual)</div>}
+          {m.alert === 'blue' && <div className="flex gap-2 rounded-xl bg-sky-500/10 p-2.5 text-[12px] text-sky-200 ring-1 ring-sky-400/30"><TriangleAlert className="h-4 w-4 shrink-0" /> EMS blue alert (Filler)</div>}
+          {m.beamLow && <div className="flex gap-2 rounded-xl bg-amber-500/10 p-2.5 text-[12px] text-amber-200 ring-1 ring-amber-400/30"><Layers className="h-4 w-4 shrink-0" /> Beam alert — {beamOver ? 'beam is finished' : 'beam almost finished'} (Unload)</div>}
+          {m.shortPick && <div className="flex gap-2 rounded-xl bg-amber-500/10 p-2.5 text-[12px] text-amber-200 ring-1 ring-amber-400/30"><TriangleAlert className="h-4 w-4 shrink-0" /> Short pick alert</div>}
+        </div>
+      )}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Tile icon={Gauge} label="RPM" value={m.rpm} color="text-sky-300" />
+        <Tile icon={Activity} label="Pick" value={m.pick ?? '-'} color="text-violet-300" />
+        <Tile icon={TriangleAlert} label="Stops" value={m.stopCount ?? '-'} color="text-amber-300" />
+        <Tile icon={Timer} label={stopped ? 'Stopped for' : 'Running for'} value={fmtHM(m.stateMinutes)} unit="h:m" color={stopped ? 'text-rose-300' : 'text-emerald-300'} />
+        <NotTracked icon={Droplets} label="Water pressure" />
+        <NotTracked icon={Zap} label="Power" />
+      </div>
+      <Section title="Hourly output">
+        <div className="rounded-xl bg-white/[0.02] p-3 text-[12px] text-slate-500 ring-1 ring-dashed ring-white/10">Not tracked on the EMS live dashboard.</div>
+      </Section>
+      <Section title="Machine details (EMS)">
+        <div className="rounded-xl bg-white/[0.03] px-3 py-1 ring-1 ring-white/5">
+          <Row label="Fabric / quality" value={m.fabric} />
+          <Row label="Reed width" value={`${m.reedWidthCm} cm`} />
+          <Row label="Pick" value={m.pick ?? '-'} />
+          <Row label="Stops today" value={m.stopCount ?? '-'} />
+          <Row label="Beam left" value={m.beamMeters === undefined ? '-' : `${m.beamMeters.toLocaleString('en-IN', { maximumFractionDigits: 2 })} m`} accent={m.beamLow ? 'text-amber-300' : undefined} />
+          <Row label="Last EMS update" value={m.lastUpdate ?? '-'} />
+          <Row label="Warp / weft yarn" value="Not tracked" accent="text-slate-500" />
+          <Row label="Service dates" value="Not tracked" accent="text-slate-500" />
+        </div>
+        {m.beamMeters !== undefined && (
+          <div className="mt-3">
+            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+              <span>Warp beam left{m.beamNo ? ` (beam ${m.beamNo})` : ''}</span>
+              <span className="font-semibold text-slate-200">
+                {Math.max(0, m.beamMeters).toLocaleString('en-IN', { maximumFractionDigits: 0 })}{m.beamTotal ? ` / ${m.beamTotal.toLocaleString('en-IN')}` : ''} m
+              </span>
+            </div>
+            <ProgressBar value={m.warpBeamRemaining ?? 0} color={m.beamLow ? '#fb7185' : '#60a5fa'} />
+            {!m.beamTotal && <div className="mt-1 text-[10px] text-slate-500">Full beam length not found in the EMS for this loom; bar assumes 6,000 m.</div>}
+          </div>
+        )}
+        <div className="mt-3 rounded-xl bg-white/[0.03] px-3 py-1 ring-1 ring-white/5">
+          <Row label="Beam finishes in" value={m.etaHours === undefined ? (stopped ? 'Loom stopped' : '-') : fmtEta(m.etaHours)} accent={m.beamLow ? 'text-amber-300' : 'text-sky-300'} />
+          <Row label="Expected at" value={fmtClock(m.etaAt)} />
+          <Row label="Beam loaded" value={m.beamLoadedAt ? fmtClock(m.beamLoadedAt) : '-'} />
+          <Row label="Beam alert at" value={m.beamAlertM ? `${m.beamAlertM} m left` : '-'} />
+          <Row label="Making now" value={m.rateMph ? `${m.rateMph} m/h (${m.rateSource === 'observed' ? 'measured' : 'from rpm, pick & efficiency'})` : '-'} />
+        </div>
+      </Section>
+      <div className="mt-4 flex gap-2">
+        <ActionButton icon={Crosshair} onClick={() => focusOnKey(`machine:${m.id}`)}>Focus</ActionButton>
+        {op && <ActionButton icon={User} onClick={() => selectWorker(op.id)}>Operator</ActionButton>}
+      </div>
+    </>
+  )
+}
+
 function MachinePanel({ id }) {
   const m = useFactoryStore((s) => s.machines.find((x) => x.id === id))
+  const op = useFactoryStore((s) => s.staffing?.machineOperator[id])
   if (!m) return null
+  if (m.live) return <LiveMachinePanel m={m} op={op} />
   const st = STATUS_STYLES[m.status]
   return (
     <>
@@ -116,9 +233,15 @@ function MachinePanel({ id }) {
           </div>
           <div className="text-[11px] text-slate-400">
             Operator{' '}
-            <button className="font-semibold text-amber-300 hover:underline" onClick={() => selectWorker(m.operatorId)}>
-              {m.operator} ({m.operatorId})
-            </button>
+            {op ? (
+              <button className="font-semibold text-amber-300 hover:underline" onClick={() => selectWorker(op.id)}>
+                {op.name} ({op.id})
+              </button>
+            ) : (
+              <button className="font-semibold text-rose-300 hover:underline" onClick={() => useFactoryStore.getState().setSettingsOpen(true, 'staffing')}>
+                none assigned — fix in Settings
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -157,7 +280,7 @@ function MachinePanel({ id }) {
       </Section>
       <div className="mt-4 flex gap-2">
         <ActionButton icon={Crosshair} onClick={() => focusOnKey(`machine:${m.id}`)}>Focus</ActionButton>
-        <ActionButton icon={User} onClick={() => selectWorker(m.operatorId)}>Operator</ActionButton>
+        {op && <ActionButton icon={User} onClick={() => selectWorker(op.id)}>Operator</ActionButton>}
       </div>
     </>
   )
@@ -171,7 +294,98 @@ function shiftHours(start) {
   return hhmm(Math.min(mins, 12 * 60))
 }
 
+const ATT_STYLE = {
+  present: 'bg-emerald-500/15 text-emerald-200 ring-emerald-400/30',
+  half: 'bg-sky-500/15 text-sky-200 ring-sky-400/30',
+  absent: 'bg-rose-500/15 text-rose-200 ring-rose-400/30',
+  leave: 'bg-amber-500/15 text-amber-200 ring-amber-400/30',
+}
+const ATT_NAME = { present: 'Present', half: 'Half day', absent: 'Absent', leave: 'On leave' }
+
+function OperatorPanel({ id }) {
+  const settings = useFactoryStore((s) => s.settings)
+  const staffing = useFactoryStore((s) => s.staffing)
+  const machines = useFactoryStore((s) => s.machines)
+  const op = settings?.operators.find((o) => o.id === id)
+  if (!op || !staffing) return null
+  const att = staffing.attendanceOf(op)
+  const looms = staffing.assignments.find((a) => a.op.id === id)?.machines || []
+  const shift = settings.general.shifts.find((x) => x.id === op.shift)
+  const month = staffing.date.slice(0, 7)
+  let full = 0
+  let half = 0
+  let leave = 0
+  for (const [d, day] of Object.entries(settings.attendance)) {
+    if (!d.startsWith(month)) continue
+    const st = day[id]?.status
+    if (st === 'present') full++
+    if (st === 'half') half++
+    if (st === 'leave') leave++
+  }
+  const days = full + half / 2
+  const out = machines.filter((m) => looms.includes(m.id))
+  const prod = out.reduce((a, m) => a + m.production, 0)
+  const initials = op.name.split(' ').map((p) => p[0]).join('')
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 text-lg font-extrabold text-slate-900">{initials}</div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Loom operator · {op.id}</div>
+          <div className="truncate text-xl font-extrabold text-white">{op.name}</div>
+          <div className="text-[13px] text-amber-200">{shift?.name} · {shift?.start}–{shift?.end}</div>
+        </div>
+      </div>
+      <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2 text-[12px] font-semibold ring-1 ${ATT_STYLE[att.status]}`}>
+        <span>Today: {ATT_NAME[att.status]}</span>
+        <span>{att.in ? `In ${att.in}` : ''}{att.out ? ` · Out ${att.out}` : ''}{att.ot ? ` · OT ${att.ot} h` : ''}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Tile icon={Cog} label="Looms tended" value={looms.length} unit={`/ ${staffing.perOperator} max`} color="text-emerald-300" />
+        <Tile icon={Layers} label="Output today" value={num(prod)} unit="m" color="text-sky-300" />
+        <Tile icon={Clock} label="Days this month" value={days} unit={leave ? `· ${leave} leave` : ''} />
+        <Tile icon={IndianRupee} label="Earned (month)" value={inrShort(days * (op.dailyWage || 0))} color="text-amber-300" />
+      </div>
+      <Section title="Assigned looms" right={<span className="text-[10px] text-slate-500">click a loom</span>}>
+        {out.length ? (
+          <div className="grid grid-cols-5 gap-1.5">
+            {out.map((m) => {
+              const st = STATUS_STYLES[m.status]
+              return (
+                <button key={m.id} onClick={() => selectMachine(m.id)} className={`rounded-lg py-1.5 text-center ring-1 transition hover:scale-105 ${st.bg} ${st.ring}`}>
+                  <div className={`text-[11px] font-bold ${st.text}`}>{m.id.replace('WJ-', '')}</div>
+                  <div className="text-[9px] text-slate-400">{m.status === 'running' ? `${m.efficiency}%` : m.status === 'idle' ? 'idle' : 'maint'}</div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-xl bg-white/[0.03] p-3 text-[12px] text-slate-400 ring-1 ring-white/5">{PRESENT_OK(att.status) ? 'No looms assigned.' : 'Not on the floor today.'}</div>
+        )}
+      </Section>
+      <Section title="Details">
+        <div className="rounded-xl bg-white/[0.03] px-3 py-1 ring-1 ring-white/5">
+          <Row label="Skill" value={op.skill} />
+          <Row label="Phone" value={op.phone || '—'} />
+          <Row label="Daily wage" value={inr(op.dailyWage || 0)} />
+        </div>
+      </Section>
+      <div className="mt-4 flex gap-2">
+        <ActionButton icon={Crosshair} onClick={() => focusOnKey(`worker:${op.id}`)}>Focus</ActionButton>
+        <ActionButton icon={Users} onClick={() => useFactoryStore.getState().setSettingsOpen(true, 'attendance')}>Attendance</ActionButton>
+      </div>
+    </>
+  )
+}
+const PRESENT_OK = (st) => st === 'present' || st === 'half'
+
 function WorkerPanel({ id }) {
+  const isOperator = useFactoryStore((s) => !!s.settings?.operators.some((o) => o.id === id))
+  if (isOperator) return <OperatorPanel id={id} />
+  return <StaffPanel id={id} />
+}
+
+function StaffPanel({ id }) {
   const w = useFactoryStore((s) => s.workers.find((x) => x.id === id))
   const m = useFactoryStore((s) => s.machines.find((x) => x.id === w?.station))
   if (!w) return null
@@ -532,10 +746,11 @@ function TruckPanel() {
 
 function EntrancePanel() {
   const c = useFactoryStore((s) => s.company)
+  const factoryName = useFactoryStore((s) => s.settings?.general.factoryName)
   if (!c) return null
   return (
     <>
-      <Header icon={DoorOpen} kicker="Main entrance" title={c.name} color="#fcd34d" />
+      <Header icon={DoorOpen} kicker="Main entrance" title={factoryName || c.name} color="#fcd34d" />
       <div className="mt-1 pl-14 text-[12px] font-semibold uppercase tracking-[0.25em] text-slate-400">{c.tagline}</div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Tile label="Looms" value={c.looms} color="text-emerald-300" />
@@ -554,7 +769,6 @@ function EntrancePanel() {
         <div className="rounded-xl bg-white/[0.03] px-3 py-1 ring-1 ring-white/5">
           <Row label="Gate" value={c.gateStatus} />
           <Row label="Visitors today" value={c.visitorsToday} />
-          <Row label="Security on duty" value={<button className="text-amber-300 hover:underline" onClick={() => selectWorker('W-27')}>Balwant Singh</button>} />
         </div>
       </Section>
       <button
@@ -601,18 +815,52 @@ const PANELS = {
   manager: ManagerPanel, truck: TruckPanel, entrance: EntrancePanel, inspection: InspectionPanel,
 }
 
-export default function DetailPanel({ mobile = false }) {
+export default function DetailPanel({ mobile = false, landscape = false }) {
   const selected = useFactoryStore((s) => s.selected)
   const clear = useFactoryStore((s) => s.clearSelection)
+  const [collapsed, setCollapsed] = useState(false)
+  const drag = useRef(null)
+  useEffect(() => setCollapsed(false), [selected?.key])
   if (!selected) return null
   const P = PANELS[selected.type]
   if (!P) return null
+
+  if (mobile && !landscape) {
+    // bottom sheet: drag/tap the handle to collapse to a peek and see the 3D view
+    const onDown = (e) => (drag.current = e.clientY)
+    const onUp = (e) => {
+      if (drag.current == null) return
+      const dy = e.clientY - drag.current
+      drag.current = null
+      if (dy > 40) setCollapsed(true)
+      else if (dy < -40) setCollapsed(false)
+      else setCollapsed((c) => !c)
+    }
+    return (
+      <div
+        key={selected.key}
+        className="glass slide-up safe-bottom pointer-events-auto fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-3xl"
+        style={{ maxHeight: collapsed ? 128 : '64dvh', transition: 'max-height .28s cubic-bezier(.2,.8,.2,1)', background: 'linear-gradient(180deg, rgba(17,24,38,0.94), rgba(10,15,24,0.97))' }}
+      >
+        <div className="flex shrink-0 touch-none items-center justify-center pb-1 pt-2" onPointerDown={onDown} onPointerUp={onUp} role="button" aria-label={collapsed ? 'Expand details' : 'Collapse details'}>
+          <div className="h-1.5 w-10 rounded-full bg-white/25" />
+        </div>
+        <button onClick={clear} className="absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 active:bg-white/10" aria-label="Close">
+          <X className="h-5 w-5" />
+        </button>
+        <div className={`min-h-0 flex-1 px-4 pb-3 pr-12 ${collapsed ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'}`}>
+          <P id={selected.id} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       key={selected.key}
       className={
         mobile
-          ? 'glass slide-up pointer-events-auto fixed inset-x-2 bottom-2 z-40 max-h-[62vh] overflow-y-auto rounded-2xl p-4 scrollbar-thin'
+          ? 'glass slide-in-right safe-y pointer-events-auto fixed bottom-2 right-2 top-2 z-40 w-[min(380px,52vw)] overflow-y-auto rounded-2xl p-4 scrollbar-thin'
           : 'glass slide-in-right pointer-events-auto relative max-h-full w-[372px] overflow-y-auto rounded-2xl p-4 scrollbar-thin'
       }
     >

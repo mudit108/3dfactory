@@ -2,13 +2,23 @@ import { useEffect } from 'react'
 import { useFactoryStore } from './useFactoryStore'
 import { NAV_VIEWS } from '../data/layout'
 import { goToView } from '../scene/focus'
+import { toggleSound } from '../ui/Hud'
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const st = useFactoryStore.getState()
-      if (st.mode === 'walk' || st.mode === 'present') return
+      if (st.settingsOpen) return
+      if (e.code === 'KeyM') {
+        toggleSound()
+        return
+      }
+      if (e.key === ',') {
+        st.setSettingsOpen(true)
+        return
+      }
+      if (st.mode === 'walk' || st.mode === 'fly' || st.mode === 'present') return
       const n = Number(e.key)
       if (n >= 1 && n <= NAV_VIEWS.length) {
         st.clearSelection()
@@ -23,6 +33,12 @@ export function useKeyboardShortcuts() {
           break
         case 'KeyG':
           st.setMode('walk')
+          break
+        case 'KeyV':
+          st.setMode('fly')
+          break
+        case 'KeyO':
+          st.toggleOpenView()
           break
         case 'KeyL':
           st.toggleLabels()

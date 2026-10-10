@@ -1,4 +1,6 @@
-// First-person Walkthrough Mode: pointer-lock mouse look, WASD, collisions.
+// First-person modes:
+//  • Walkthrough – eye height, WASD, collisions with walls & machines
+//  • Free Fly    – fly anywhere (WASD + Space/E up, Q/C down), no limits
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -17,7 +19,7 @@ function blocked(x, z, colliders) {
   return false
 }
 
-export default function WalkControls() {
+export default function WalkControls({ fly = false }) {
   const { camera, gl } = useThree()
   const colliders = useMemo(() => buildColliders(), [])
   const keys = useRef({})
@@ -29,7 +31,15 @@ export default function WalkControls() {
   // initial pose
   useEffect(() => {
     const prevFov = camera.fov
-    camera.position.set(...WALK_START.position)
+    if (fly) {
+      // start flying from wherever the camera currently is, looking the same way
+      const d = new THREE.Vector3()
+      camera.getWorldDirection(d)
+      look.current.yaw = Math.atan2(-d.x, -d.z)
+      look.current.pitch = Math.asin(THREE.MathUtils.clamp(d.y, -1, 1))
+    } else {
+      camera.position.set(...WALK_START.position)
+    }
     camera.rotation.order = 'YXZ'
     camera.fov = 70
     camera.updateProjectionMatrix()
@@ -38,7 +48,7 @@ export default function WalkControls() {
       camera.rotation.order = 'XYZ'
       camera.updateProjectionMatrix()
     }
-  }, [camera])
+  }, [camera, fly])
 
   // pointer lock handling
   useEffect(() => {
@@ -55,8 +65,18 @@ export default function WalkControls() {
   useEffect(() => {
     const st = useFactoryStore.getState
     const exit = () => {
-      st().setMode('orbit')
-      setTimeout(() => goToView('overview', 1.6), 30)
+      if (fly) {
+        // stay where you are: hand the current viewpoint back to the orbit camera
+        const d = new THREE.Vector3()
+        camera.getWorldDirection(d)
+        const pos = camera.position.toArray()
+        const tgt = camera.position.clone().addScaledVector(d, 12).toArray()
+        st().setMode('orbit')
+        setTimeout(() => st().flyTo(pos, tgt, 0.05), 30)
+      } else {
+        st().setMode('orbit')
+        setTimeout(() => goToView('overview', 1.6), 30)
+      }
     }
     const onLockChange = () => {
       const locked = document.pointerLockElement === gl.domElement
@@ -67,7 +87,7 @@ export default function WalkControls() {
     const onMove = (e) => {
       if (document.pointerLockElement !== gl.domElement) return
       look.current.yaw -= e.movementX * 0.0022
-      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - e.movementY * 0.0022, -1.3, 1.3)
+      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - e.movementY * 0.0022, -1.55, 1.55)
     }
     // drag-to-look fallback (touch / no pointer lock)
     let drag = null
@@ -78,7 +98,7 @@ export default function WalkControls() {
     const onDrag = (e) => {
       if (!drag) return
       look.current.yaw -= (e.clientX - drag.x) * 0.005
-      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - (e.clientY - drag.y) * 0.005, -1.3, 1.3)
+      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - (e.clientY - drag.y) * 0.005, -1.55, 1.55)
       drag = { x: e.clientX, y: e.clientY }
     }
     const onUp = () => {
@@ -90,6 +110,7 @@ export default function WalkControls() {
         exit()
         return
       }
+      if (e.code === 'Space') e.preventDefault()
       keys.current[e.code] = e.type === 'keydown'
     }
     document.addEventListener('pointerlockchange', onLockChange)
@@ -110,7 +131,7 @@ export default function WalkControls() {
       if (document.pointerLockElement === gl.domElement) document.exitPointerLock()
       st().setWalkLocked(false)
     }
-  }, [gl])
+  }, [gl, fly, camera])
 
   useFrame((_, dt) => {
     dt = Math.min(dt, 0.05)
@@ -123,8 +144,20 @@ export default function WalkControls() {
       f /= len
       r /= len
     }
-    const speed = (k.ShiftLeft || k.ShiftRight ? 6.5 : 3.4) * dt
     const { yaw, pitch } = look.current
+    if (fly) {
+      const up = (k.Space || k.KeyE ? 1 : 0) - (k.KeyQ || k.KeyC || k.ControlLeft ? 1 : 0) + (pad.up || 0)
+      const sp = (k.ShiftLeft || k.ShiftRight ? 26 : 9) * dt
+      const cp = Math.cos(pitch)
+      const fwd = [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp]
+      camera.position.x += (fwd[0] * f + Math.cos(yaw) * r) * sp
+      camera.position.y += (fwd[1] * f + up) * sp
+      camera.position.z += (fwd[2] * f - Math.sin(yaw) * r) * sp
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y, 0.25, 400)
+      camera.rotation.set(pitch, yaw, 0, 'YXZ')
+      return
+    }
+    const speed = (k.ShiftLeft || k.ShiftRight ? 6.5 : 3.4) * dt
     const fx = -Math.sin(yaw)
     const fz = -Math.cos(yaw)
     const rx = Math.cos(yaw)

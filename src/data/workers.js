@@ -27,15 +27,10 @@ const operators = machines.map((m, i) => ({
 
 export const workers = [
   ...operators,
-  { id: 'W-19', name: 'Kamlesh Bhatt', role: 'Yarn Store Keeper', department: 'Stores', station: 'yarn-keeper', activity: 'inspect', appearance: 1, shiftStart: '06:00', status: 'On duty', skill: 'Senior', experienceYears: 11 },
-  { id: 'W-20', name: 'Deepak Vaghela', role: 'Yarn Handler', department: 'Stores', station: 'yarn-carrier', activity: 'carry', appearance: 2, shiftStart: '06:00', status: 'Moving yarn to looms', skill: 'Grade B', experienceYears: 3 },
-  { id: 'W-21', name: 'Sunita Patil', role: 'Fabric Inspector', department: 'Quality', station: 'INS-01', activity: 'inspect', appearance: 3, shiftStart: '06:00', status: 'Inspecting LT-26-0921', skill: 'Senior', experienceYears: 9 },
-  { id: 'W-22', name: 'Ravi Chaudhary', role: 'Roll Handler', department: 'Finished Goods', station: 'roll-mover', activity: 'carryRoll', appearance: 0, shiftStart: '06:00', status: 'Moving rolls to FG store', skill: 'Grade B', experienceYears: 4 },
-  { id: 'W-23', name: 'Imran Shaikh', role: 'Loading Crew', department: 'Dispatch', station: 'loader', activity: 'load', appearance: 4, shiftStart: '06:00', status: 'Loading GJ 05 BX 4821', skill: 'Grade B', experienceYears: 5 },
-  { id: 'W-24', name: 'Mukesh Solanki', role: 'Dispatch Supervisor', department: 'Dispatch', station: 'dispatch-supervisor', activity: 'inspect', appearance: 1, shiftStart: '08:00', status: 'Checking challan', skill: 'Senior', experienceYears: 12 },
-  { id: 'W-25', name: 'Neha Agarwal', role: 'Accounts Executive', department: 'Accounts', station: 'accounts-desk', activity: 'sit', appearance: 'office', shiftStart: '09:30', status: 'At desk', skill: 'M.Com', experienceYears: 6 },
-  { id: 'W-26', name: 'Rakesh Mehta', role: 'Factory Manager', department: 'Management', station: 'manager-desk', activity: 'sit', appearance: 'manager', shiftStart: '08:30', status: 'In office', skill: 'B.Tech Textile', experienceYears: 18 },
-  { id: 'W-27', name: 'Balwant Singh', role: 'Security Guard', department: 'Security', station: 'security-desk', activity: 'guard', appearance: 'security', shiftStart: '06:00', status: 'At gate', skill: 'Ex-servicemen', experienceYears: 14 },
+  { id: 'W-39', name: 'Kamlesh Bhatt', role: 'Yarn Store Keeper', department: 'Stores', station: 'yarn-keeper', activity: 'inspect', appearance: 1, shiftStart: '06:00', status: 'On duty', skill: 'Senior', experienceYears: 11 },
+  { id: 'W-40', name: 'Deepak Vaghela', role: 'Yarn Handler', department: 'Stores', station: 'yarn-carrier', activity: 'carry', appearance: 2, shiftStart: '06:00', status: 'Moving yarn to looms', skill: 'Grade B', experienceYears: 3 },
+  { id: 'W-41', name: 'Ravi Chaudhary', role: 'Roll Handler', department: 'Finished Goods', station: 'roll-mover', activity: 'carryRoll', appearance: 0, shiftStart: '06:00', status: 'Moving rolls to FG store', skill: 'Grade B', experienceYears: 4 },
+  { id: 'W-42', name: 'Imran Shaikh', role: 'Finished Stock Keeper', department: 'Finished Goods', station: 'fg-keeper', activity: 'inspect', appearance: 4, shiftStart: '06:00', status: 'Counting lot LT-26-0920', skill: 'Senior', experienceYears: 8 },
 ]
 
 export default workers

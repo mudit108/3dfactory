@@ -5,7 +5,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Billboard, Line } from '@react-three/drei'
 import * as THREE from 'three'
-import { FLOW_SEGMENTS, DATA_HUBS } from '../data/layout'
+import { FLOW_SEGMENTS } from '../data/layout'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { GEO } from './geometries'
 import { chevronTexture, glowTexture } from './textures'
@@ -73,11 +73,9 @@ function FlowSegment({ points, color }) {
 }
 
 const STAGE_LABELS = [
-  { n: 1, text: 'YARN', color: '#60a5fa', at: [-36.5, 7.5] },
-  { n: 2, text: 'WEAVING', color: '#34d399', at: [-27, -3] },
-  { n: 3, text: 'INSPECTION', color: '#a78bfa', at: [15, -6.5] },
-  { n: 4, text: 'FINISHED GOODS', color: '#fbbf24', at: [30, -6.5] },
-  { n: 5, text: 'DISPATCH', color: '#fb923c', at: [40.5, 14] },
+  { n: 1, text: 'YARN STOCK', color: '#60a5fa', at: [-42.5, 13] },
+  { n: 2, text: 'WATERJET LOOMS', color: '#34d399', at: [-34.6, -2.5] },
+  { n: 3, text: 'FINISHED STOCK', color: '#fbbf24', at: [27.5, -2.5] },
 ]
 
 function StageMarker({ n, text, color, at }) {
@@ -145,11 +143,6 @@ function HubNode({ position, color }) {
 export default function FlowPaths() {
   const show = useFactoryStore((s) => s.showFlow)
   if (!show) return null
-  const hubs = DATA_HUBS
-  const links = [
-    ['yarn', 'accounts'], ['production', 'accounts'], ['finished', 'accounts'], ['dispatch', 'accounts'], ['inspection', 'accounts'],
-    ['yarn', 'manager'], ['production', 'manager'], ['finished', 'manager'], ['dispatch', 'manager'], ['accounts', 'manager'],
-  ]
   return (
     <group>
       {FLOW_SEGMENTS.map((s) => (
@@ -157,12 +150,6 @@ export default function FlowPaths() {
       ))}
       {STAGE_LABELS.map((s) => (
         <StageMarker key={s.n} {...s} />
-      ))}
-      {links.map(([a, b], i) => (
-        <DataLink key={a + b} from={hubs[a]} to={hubs[b]} color={b === 'accounts' ? '#f472b6' : '#22d3ee'} phase={i * 0.13} speed={0.18 + (i % 3) * 0.04} />
-      ))}
-      {Object.entries(hubs).map(([k, p]) => (
-        <HubNode key={k} position={p} color={k === 'accounts' ? '#f472b6' : k === 'manager' ? '#22d3ee' : '#7dd3fc'} />
       ))}
     </group>
   )

@@ -28,17 +28,19 @@ export const qualityData = {
 }
 
 export const maintenanceTasks = [
-  { machine: 'WJ-12', task: 'Nozzle & pump seal replacement', priority: 'High', status: 'In progress', tech: 'Maintenance team' },
-  { machine: 'WJ-05', task: 'Warp beam change + heald cleaning', priority: 'Medium', status: 'Scheduled 11:00', tech: 'Beam gaiting crew' },
+  { machine: 'WJ-14', task: 'Nozzle & pump seal replacement', priority: 'High', status: 'In progress', tech: 'Maintenance team' },
+  { machine: 'WJ-33', task: 'Nozzle & pump seal replacement', priority: 'High', status: 'In progress', tech: 'Maintenance team' },
+  { machine: 'WJ-09', task: 'Warp beam change + heald cleaning', priority: 'Medium', status: 'Scheduled 11:00', tech: 'Beam gaiting crew' },
+  { machine: 'WJ-27', task: 'Warp beam change', priority: 'Medium', status: 'Scheduled 13:30', tech: 'Beam gaiting crew' },
 ]
 
 export const companyInfo = {
   name: 'SHREE SATIJI TEXTILES',
   tagline: 'Textile Manufacturing',
   plant: 'Waterjet Weaving Unit',
-  area: '6,000 m² covered shed',
-  looms: 18,
-  capacityPerMonth: '5.5 lakh metres',
+  area: '4,840 m² covered shed',
+  looms: 38,
+  capacityPerMonth: '11.5 lakh metres',
   products: ['Polyester taffeta & pongee', 'Nylon taslan & ripstop', 'Oxford & georgette', 'Micro peach'],
   shifts: '2 × 12 h',
   visitorsToday: 3,

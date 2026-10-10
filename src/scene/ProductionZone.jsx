@@ -2,7 +2,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { loomPlacements, inspectionPlacements } from '../data/layout'
+import { loomPlacements, LOOM_COLUMNS, LOOM_ROWS } from '../data/layout'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { WaterjetLoom } from '../components/WaterjetLoom'
 import { Interactive } from '../components/Interactive'
@@ -86,8 +86,9 @@ function InspectionMachine({ running }) {
 export default function ProductionZone() {
   const machines = useFactoryStore((s) => s.machines)
   const showLabels = useFactoryStore((s) => s.showLabels)
+  const factoryName = useFactoryStore((s) => s.settings?.general.factoryName ?? 'SHREE SATIJI TEXTILES')
   const byId = useMemo(() => Object.fromEntries(machines.map((m) => [m.id, m])), [machines])
-  const statusKey = machines.map((m) => m.status).join(',')
+  const statusKey = machines.map((m) => (m.live ? `${m.status}${m.emsColor}${m.alert}${m.beamLow}${Math.round((m.warpBeamRemaining ?? 0) / 5)}` : m.status)).join(',')
   // re-render looms only when a status changes (not on every live tick)
   const looms = useMemo(
     () =>
@@ -112,23 +113,12 @@ export default function ProductionZone() {
         </Interactive>
       ))}
 
-      {inspectionPlacements.map((p, i) => (
-        <Interactive key={p.id} type="inspection" id={p.id} label={`Fabric Inspection ${p.id}`} sub={i === 0 ? 'Inspecting · 18 m/min' : 'Standby'} position={p.position}>
-          <InspectionMachine running={i === 0} />
-          <Label
-            width={1.2}
-            height={0.3}
-            position={[0, 2.85, -0.5]}
-            opts={{ width: 400, height: 100, bg: '#1e1b4b', radius: 10, lines: [{ text: p.id, size: 50, color: '#e0e7ff', weight: 800 }] }}
-          />
-        </Interactive>
-      ))}
-      {/* inspected rolls waiting to move to finished goods */}
-      <RollStack position={[20.8, 0, -8.5]} rotation={Math.PI / 2} rows={4} layers={3} colors={['#e9e6dd', '#d7d9db']} seed={4} />
-      <RollStack position={[20.8, 0, 3.2]} rotation={Math.PI / 2} rows={3} layers={2} colors={['#3a3f46', '#e2ddcf']} seed={8} />
+      {/* woven rolls waiting to move to finished stock */}
+      <RollStack position={[LOOM_COLUMNS[9], 0, LOOM_ROWS[2] + 0.2]} rotation={Math.PI / 2} rows={4} layers={3} colors={['#e9e6dd', '#d7d9db']} seed={4} />
+      <RollStack position={[LOOM_COLUMNS[9], 0, LOOM_ROWS[3] + 0.2]} rotation={Math.PI / 2} rows={3} layers={2} colors={['#3a3f46', '#e2ddcf']} seed={8} />
 
       {/* spare warp beams on a rack behind the looms */}
-      <group position={[-15, 0, -27.8]}>
+      <group position={[-6, 0, -20.2]}>
         {[0, 1, 2, 3].map((i) => (
           <group key={i} position={[i * 3.4 - 5, 0.5, 0]}>
             <CylX r={0.055} h={3.0} material={MAT.steel} />
@@ -141,8 +131,7 @@ export default function ProductionZone() {
         <Box size={[14, 0.08, 0.3]} position={[0, 0.08, -0.4]} material={MAT.yellow} />
       </group>
 
-      <ZoneBanner text="WATERJET WEAVING" sub="18 LOOMS · SHED A" position={[-7, 5.4, -24.6]} width={7.5} accent="#34d399" />
-      <ZoneBanner text="FABRIC INSPECTION" position={[21.2, 4.6, -6.5]} width={4.6} accent="#a78bfa" rotation={Math.PI / 2} />
+      <ZoneBanner text="WATERJET LOOMS" sub={`${loomPlacements.length} LOOMS · ${factoryName}`} position={[-6, 5.6, 16.5]} width={9} accent="#34d399" />
     </group>
   )
 }

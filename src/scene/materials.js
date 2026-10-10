@@ -3,7 +3,7 @@
 import * as THREE from 'three'
 import {
   corrugatedTexture, woodTexture, cardboardTexture, fabricWeaveTexture, hazardTexture, gratingTexture,
-  threadsTexture, rollSideTexture,
+  threadsTexture, rollSideTexture, grimeTexture, roughNoiseTexture,
 } from './textures'
 
 const cache = new Map()
@@ -18,18 +18,26 @@ export const MAT = {
   get steel() { return m('steel', () => std({ color: '#9aa3ab', metalness: 0.75, roughness: 0.38 })) },
   get darkSteel() { return m('darkSteel', () => std({ color: '#3b4148', metalness: 0.7, roughness: 0.45 })) },
   get chrome() { return m('chrome', () => std({ color: '#d7dde2', metalness: 1, roughness: 0.16 })) },
-  get galvanized() { return m('galv', () => std({ color: '#b3b9be', metalness: 0.8, roughness: 0.42 })) },
-  get structure() { return m('structure', () => std({ color: '#5f6f82', metalness: 0.55, roughness: 0.5 })) },
-  get rafter() { return m('rafter', () => std({ color: '#6c7a8c', metalness: 0.55, roughness: 0.5 })) },
+  get galvanized() { return m('galv', () => std({ color: '#b3b9be', roughnessMap: roughNoiseTexture([3, 3]), metalness: 0.8, roughness: 0.45 })) },
+  get structure() { return m('structure', () => std({ color: '#5f6f82', map: grimeTexture(), roughnessMap: roughNoiseTexture(), metalness: 0.5, roughness: 0.55 })) },
+  get rafter() { return m('rafter', () => std({ color: '#6c7a8c', roughnessMap: roughNoiseTexture(), metalness: 0.5, roughness: 0.55 })) },
   get castIron() { return m('castIron', () => std({ color: '#2b2f33', metalness: 0.5, roughness: 0.6 })) },
   get aluminium() { return m('alu', () => std({ color: '#c7ccd1', metalness: 0.85, roughness: 0.3 })) },
   get brass() { return m('brass', () => std({ color: '#b08d45', metalness: 0.9, roughness: 0.3 })) },
 
   // ---- loom paint ----
-  get loomBody() { return m('loomBody', () => std({ color: '#d8d4c6', metalness: 0.25, roughness: 0.42 })) },
-  get loomAccent() { return m('loomAccent', () => std({ color: '#2f6b66', metalness: 0.3, roughness: 0.45 })) },
-  get loomDark() { return m('loomDark', () => std({ color: '#30353a', metalness: 0.4, roughness: 0.5 })) },
-  get motor() { return m('motor', () => std({ color: '#4b6178', metalness: 0.5, roughness: 0.45 })) },
+  // worn industrial paint: grime map + roughness variation
+  get loomBody() { return m('loomBody', () => std({ color: '#d9d3c1', map: grimeTexture(), roughnessMap: roughNoiseTexture(), metalness: 0.2, roughness: 0.5 })) },
+  get loomAccent() { return m('loomAccent', () => std({ color: '#3d7a70', map: grimeTexture(), roughnessMap: roughNoiseTexture(), metalness: 0.25, roughness: 0.5 })) },
+  get loomDark() { return m('loomDark', () => std({ color: '#33383d', roughnessMap: roughNoiseTexture(), metalness: 0.45, roughness: 0.55 })) },
+  get motor() { return m('motor', () => std({ color: '#4b6178', map: grimeTexture(), metalness: 0.5, roughness: 0.5 })) },
+  get stainless() { return m('stainless', () => std({ color: '#c4c9cd', roughnessMap: roughNoiseTexture([2, 2]), metalness: 0.9, roughness: 0.28 })) },
+  get tubeLight() { return m('tubeLight', () => std({ color: '#ffffff', emissive: '#eef6ff', emissiveIntensity: 2.6, roughness: 0.3, toneMapped: true })) },
+  get tubeOff() { return m('tubeOff', () => std({ color: '#d8dde0', roughness: 0.3 })) },
+  get mist() {
+    return m('mist', () => new THREE.MeshBasicMaterial({ color: '#dff3ff', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }))
+  },
+  get puddle() { return m('puddle', () => std({ color: '#3e4a4c', metalness: 0.2, roughness: 0.04, transparent: true, opacity: 0.42, depthWrite: false })) },
 
   // ---- paints / plastics ----
   get yellow() { return m('yellow', () => std({ color: '#e0ad1f', metalness: 0.2, roughness: 0.5 })) },

@@ -6,7 +6,8 @@ import { Billboard } from '@react-three/drei'
 import { Box, Cyl, CylX, RBox, Sheet, Label, TexPlane, FloorRect } from './primitives'
 import { MAT, colorMaterial, emissiveMaterial, fabricMaterial } from '../scene/materials'
 import { GEO, tube } from '../scene/geometries'
-import { hmiTexture } from '../scene/textures'
+import { hmiTexture, glowTexture } from '../scene/textures'
+import * as THREE from 'three'
 
 const WARP_COLORS = ['#f1eee6', '#ecebe6', '#e7e2d4', '#f3f1eb', '#dfe3e6', '#ebe5d6']
 const CLOTH_COLORS = ['#e9e6dd', '#e2ddcf', '#d7d9db', '#ece8de', '#3a3f46', '#2b3550', '#cfc3a6', '#e6e2d8']
@@ -18,7 +19,33 @@ const pipeWater = () => tube([[-2.05, 0, -0.95], [-2.05, 1.0, -0.95], [-2.05, 1.
 const pipeDrain = () => tube([[-1.3, 0.14, -0.5], [-1.55, 0.08, -0.95], [-1.6, 0.03, -1.35], [-1.6, 0.02, -1.6]], 0.03)
 const cablePanel = () => tube([[1.45, 1.5, 0.62], [1.7, 1.46, 0.3], [1.72, 1.44, -0.4], [1.68, 1.5, -0.9]], 0.014)
 const conduit = () => tube([[1.68, 1.5, -0.9], [1.68, 2.4, -0.95], [1.68, 4.15, -0.95]], 0.022, 8)
+const suctionHose = () => tube([[1.36, 1.02, 0.36], [1.62, 0.9, 0.5], [1.86, 0.55, 0.62], [1.9, 0.28, 0.66]], 0.035, 24, 8)
+const pumpDrain = () => tube([[1.9, 0.1, 0.42], [1.92, 0.05, 0.0], [1.7, 0.03, -1.3], [1.6, 0.02, -1.62]], 0.028, 24, 6)
+const lightCable = () => tube([[1.38, 2.32, 0.1], [1.5, 2.6, 0.0], [1.6, 3.4, -0.5], [1.68, 4.12, -0.95]], 0.008, 16, 4)
 const weftFeed = () => tube([[-2.12, 1.33, 0.56], [-2.0, 1.34, 0.46], [-1.9, 1.3, 0.32], [-1.62, 1.16, 0.15]], 0.004, 16, 4)
+
+let _mist
+const mistMaterial = () =>
+  (_mist ||= new THREE.MeshBasicMaterial({ map: glowTexture(), color: '#d8f1ff', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }))
+
+/** Overhead fluorescent batten fitted on a stand above the loom (typical in Surat sheds). */
+function TubeLight({ on, flickerRef }) {
+  return (
+    <group position={[0, 2.3, 0.12]}>
+      {[-1.38, 1.38].map((x) => (
+        <Box key={x} size={[0.035, 1.12, 0.035]} position={[x, -0.56, 0]} material={MAT.darkSteel} />
+      ))}
+      <Box size={[2.8, 0.035, 0.035]} position={[0, 0, 0]} material={MAT.darkSteel} />
+      <group position={[0, -0.07, 0]}>
+        <Box size={[1.3, 0.05, 0.1]} material={MAT.white} />
+        <group ref={flickerRef}>
+          <CylX r={0.016} h={1.22} position={[0, -0.04, 0]} material={on ? MAT.tubeLight : MAT.tubeOff} />
+        </group>
+        <Box size={[1.3, 0.012, 0.012]} position={[0, -0.005, 0.05]} material={MAT.white} />
+      </group>
+    </group>
+  )
+}
 
 function ConeMarker({ position }) {
   return (
@@ -30,17 +57,21 @@ function ConeMarker({ position }) {
   )
 }
 
-function StatusBadge({ id, status }) {
-  const opts = useMemo(
-    () => ({
-      width: 320, height: 88, bg: 'rgba(12,18,28,0.88)', radius: 20, border: STATUS_COLOR[status], borderWidth: 5,
+function StatusBadge({ id, status, emsColor, alert, beamLow, live }) {
+  const opts = useMemo(() => {
+    const color = live && emsColor ? emsColor : STATUS_COLOR[status]
+    // live: same colour as the EMS card, plus the EMS alert (manual / filler / beam)
+    const tag = live
+      ? alert === 'red' ? 'MANUAL' : alert === 'blue' ? 'FILLER' : beamLow ? 'BEAM' : status === 'running' ? 'RUN' : 'STOP'
+      : status === 'running' ? 'RUN' : status === 'idle' ? 'IDLE' : 'MAINT'
+    return {
+      width: 320, height: 88, bg: 'rgba(12,18,28,0.88)', radius: 20, border: color, borderWidth: 5,
       lines: [
         { text: id, size: 40, color: '#f8fafc', y: 44, x: 26, align: 'left', weight: 800 },
-        { text: status === 'running' ? 'RUN' : status === 'idle' ? 'IDLE' : 'MAINT', size: 26, color: STATUS_COLOR[status], y: 46, x: 298, align: 'right', weight: 800 },
+        { text: tag, size: 26, color, y: 46, x: 298, align: 'right', weight: 800 },
       ],
-    }),
-    [id, status],
-  )
+    }
+  }, [id, status, emsColor, alert, beamLow, live])
   return (
     <Billboard position={[0, 2.75, 0]}>
       <Label width={1.3} height={0.36} opts={opts} emissive />
@@ -64,6 +95,10 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
   const jet = useRef()
   const beacon = useRef()
   const drum = useRef()
+  const body = useRef()
+  const mist = useRef()
+  const tube = useRef()
+  const flicker = index === 13 // one tired tube, like in every real shed
 
   const warpMat = useMemo(() => fabricMaterial(warpColor), [warpColor])
   const clothMat = useMemo(() => fabricMaterial(clothColor), [clothColor])
@@ -78,9 +113,18 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
     if (status === 'maintenance' && beacon.current) {
       beacon.current.visible = Math.sin(t * 5) > 0
     }
+    if (flicker && tube.current) {
+      const n = Math.sin(t * 1.7) + Math.sin(t * 13.1) * 0.6 + Math.sin(t * 31.7) * 0.4
+      tube.current.visible = n > -1.15 || Math.sin(t * 60) > 0
+    }
     if (!running) return
     const p = t * speed + phase0
     const s = Math.sin(p * Math.PI * 2)
+    // machine vibration (beat-up shakes the frame a few mm)
+    if (body.current) {
+      body.current.position.y = Math.abs(s) * 0.0035
+      body.current.position.z = Math.sin(p * Math.PI * 4) * 0.0025
+    }
     if (heald1.current) heald1.current.position.y = 1.16 + s * 0.035
     if (heald2.current) heald2.current.position.y = 1.16 - s * 0.035
     if (sley.current) sley.current.position.z = 0.1 + Math.pow(Math.max(0, Math.sin(p * Math.PI * 2 + 1.2)), 6) * 0.07
@@ -89,6 +133,15 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
       const on = f > 0.05 && f < 0.42
       jet.current.visible = on
       if (on) jet.current.scale.x = Math.min(1, (f - 0.05) / 0.22)
+      if (mist.current) {
+        const m = f > 0.2 && f < 0.6
+        mist.current.visible = m
+        if (m) {
+          const k = (f - 0.2) / 0.4
+          mist.current.scale.setScalar(0.25 + k * 0.45)
+          mist.current.material.opacity = 0.5 * (1 - k)
+        }
+      }
     }
     if (roll.current) roll.current.rotation.x -= dt * 0.08
     if (drum.current) drum.current.rotation.x += dt * 9
@@ -102,7 +155,11 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
       <Box size={[4.0, 0.08, 2.7]} position={[0, 0.04, -0.05]} material={MAT.plinth} receive />
       <FloorRect rect={[-2.5, -1.75, 2.5, 2.25]} width={0.07} material={floorLineMat} y={0.013} />
       <Box size={[3.0, 0.06, 1.5]} position={[0, 0.11, 0.05]} material={MAT.darkSteel} receive />
+      {/* standing water from the jets */}
+      <mesh geometry={GEO.circle} material={MAT.puddle} rotation={[-Math.PI / 2, 0, 0]} position={[-0.6 + (index % 3) * 0.5, 0.086, 0.9]} scale={[1.1 + (index % 4) * 0.2, 0.45, 1]} />
+      <mesh geometry={GEO.circle} material={MAT.puddle} rotation={[-Math.PI / 2, 0, 0]} position={[-1.7, 0.026, 1.45 + (index % 2) * 0.3]} scale={[0.5, 0.32 + (index % 3) * 0.1, 1]} />
 
+      <group ref={body}>
       {/* side frames (cast housings) */}
       {[-1, 1].map((sx) => (
         <group key={sx} position={[sx * 1.5, 0, 0]}>
@@ -188,11 +245,28 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
       <group ref={jet} position={[-1.3, 1.15, 0.14]} visible={false}>
         <Box size={[2.6, 0.01, 0.01]} position={[1.3, 0, 0]} material={MAT.water} />
       </group>
+      <Billboard position={[1.36, 1.15, 0.16]}>
+        <mesh ref={mist} geometry={GEO.plane} material={running ? mistMaterial().clone() : mistMaterial()} visible={false} userData={{ prewarm: true }} />
+      </Billboard>
+      {/* stainless water catch tray under the shed + suction (vacuum) system */}
+      <Box size={[2.7, 0.025, 0.32]} position={[0, 0.93, 0.18]} rotation={[0.18, 0, 0]} material={MAT.stainless} />
+      <Box size={[0.08, 0.02, 0.06]} position={[1.33, 1.04, 0.3]} material={MAT.stainless} />
+      <mesh geometry={suctionHose()} material={MAT.rubber} />
+      <group position={[1.9, 0, 0.55]}>
+        <RBox size={[0.3, 0.26, 0.3]} radius={0.03} position={[0, 0.2, 0]} material={MAT.motor} cast />
+        <Cyl r={0.09} h={0.14} position={[0, 0.4, 0]} material={MAT.stainless} low />
+      </group>
+      <mesh geometry={pumpDrain()} material={MAT.greyPvc} />
 
       {/* weft supply: package stand + measuring drum */}
       <Cyl r={0.018} h={1.28} position={[-2.14, 0.64, 0.58]} material={MAT.steel} low />
       <Box size={[0.3, 0.03, 0.3]} position={[-2.14, 0.015, 0.58]} material={MAT.darkSteel} />
+      <Box size={[0.03, 0.03, 0.42]} position={[-2.14, 1.12, 0.58]} material={MAT.steel} />
       <mesh geometry={GEO.yarnCone} position={[-2.14, 1.24, 0.58]} rotation={[0, 0, -0.9]} material={warpMat} castShadow />
+      <mesh geometry={GEO.yarnCone} position={[-2.14, 1.2, 0.86]} rotation={[0, 0, -0.9]} material={warpMat} castShadow />
+      {/* balloon guide eyelet */}
+      <Box size={[0.02, 0.24, 0.02]} position={[-2.0, 1.44, 0.5]} material={MAT.steel} />
+      <mesh geometry={GEO.torus} position={[-2.0, 1.56, 0.5]} rotation={[0, Math.PI / 2, 0]} scale={0.06} material={MAT.chrome} />
       <mesh geometry={weftFeed()} material={MAT.offWhite} />
       <group position={[-1.9, 1.3, 0.34]}>
         <group ref={drum}>
@@ -204,7 +278,7 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
       {/* dobby / cam box and drive */}
       <RBox size={[0.34, 0.36, 0.62]} radius={0.04} position={[-1.5, 1.58, -0.28]} material={MAT.loomAccent} cast />
       <RBox size={[0.1, 0.74, 0.52]} radius={0.03} position={[1.72, 0.7, -0.28]} material={MAT.loomAccent} cast />
-      <group position={[1.98, 0.46, -0.28]}>
+      <group position={[2.1, 0.4, -0.32]}>
         <CylX r={0.17} h={0.4} material={MAT.motor} cast />
         <CylX r={0.15} h={0.46} material={MAT.darkSteel} />
         {[-0.12, -0.04, 0.04, 0.12].map((x) => (
@@ -212,7 +286,15 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
         ))}
         <Box size={[0.34, 0.08, 0.3]} position={[0, -0.2, 0]} material={MAT.darkSteel} />
       </group>
+      {/* flywheel + V-belt guard */}
+      <CylX r={0.34} h={0.05} position={[1.8, 0.78, -0.3]} material={MAT.castIron} />
+      <group position={[1.86, 0.62, -0.3]}>
+        <RBox size={[0.06, 0.95, 0.82]} radius={0.04} material={MAT.loomAccent} cast />
+        <Box size={[0.07, 0.04, 0.6]} position={[0, 0.3, 0]} material={MAT.hazard} />
+      </group>
       <Cyl r={0.09} h={0.34} position={[0.9, 0.3, 0.86]} material={MAT.greyPvc} />
+      {/* rubber anti-vibration pads */}
+      {[-1.5, 1.5].map((x) => [-0.95, 0.75].map((z) => <Cyl key={x + '_' + z} r={0.09} h={0.05} position={[x, 0.105, z]} material={MAT.rubber} low />))}
 
       {/* control panel with HMI */}
       <group position={[1.5, 1.66, 0.72]} rotation={[-0.25, -0.2, 0]}>
@@ -226,6 +308,9 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
       <mesh geometry={cablePanel()} material={MAT.rubber} />
       <mesh geometry={conduit()} material={MAT.galvanized} />
 
+      <TubeLight on={status !== 'maintenance'} flickerRef={tube} />
+      <mesh geometry={lightCable()} material={MAT.rubber} />
+
       {/* signal tower */}
       <group position={[1.56, 1.4, -0.72]}>
         <Cyl r={0.014} h={0.4} position={[0, 0.2, 0]} material={MAT.steel} low />
@@ -236,6 +321,8 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
           <Cyl ref={beacon} r={0.045} h={0.068} position={[0, 0.58, 0]} material={emissiveMaterial('#ff3b30', 6)} low />
         )}
         <Cyl r={0.035} h={0.02} position={[0, 0.62, 0]} material={MAT.loomDark} low />
+      </group>
+
       </group>
 
       {/* ID plate */}
@@ -291,7 +378,7 @@ export const WaterjetLoom = memo(function WaterjetLoom({ machine, index = 0, sho
         </group>
       )}
 
-      {showLabel && machine && <StatusBadge id={machine.id} status={status} />}
+      {showLabel && machine && <StatusBadge id={machine.id} status={status} emsColor={machine.emsColor} alert={machine.alert} beamLow={machine.beamLow} live={machine.live} />}
     </group>
   )
 })

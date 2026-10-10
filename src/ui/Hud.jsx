@@ -1,28 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutGrid, Factory, Package, Boxes, Calculator, Briefcase, Truck, Footprints, Presentation, Tag, Workflow,
-  Gauge, Maximize, Minimize, CircleHelp, Activity, Users, Zap, ArrowRight, Radio, Layers, Search,
+  Gauge, Maximize, Minimize, CircleHelp, Activity, Users, Zap, ArrowRight, Radio, Layers, Search, Plane, Eye, EyeOff, Scan, Cog, Settings, Volume2, VolumeX,
 } from 'lucide-react'
+import { factorySound } from '../services/factorySound'
 import { useFactoryStore, computeSummary } from '../hooks/useFactoryStore'
 import { goToView } from '../scene/focus'
 import { NAV_VIEWS, CAMERA_VIEWS, WORKFLOW_STEPS } from '../data/layout'
-import { USING_MOCK } from '../services/factoryApi'
+import { useDataMode } from '../services/factoryApi'
 import { num, STATUS_STYLES } from './format'
 import { ProgressBar } from './charts'
 
 export const VIEW_ICONS = {
-  overview: LayoutGrid, production: Factory, yarn: Package, finished: Boxes, accounts: Calculator, manager: Briefcase, dispatch: Truck,
+  overview: LayoutGrid, top: Scan, production: Factory, looms: Cog, yarn: Package, finished: Boxes, accounts: Calculator, manager: Briefcase, dispatch: Truck,
 }
-const VIEW_ZONE = { production: 'production', yarn: 'yarn', finished: 'finished', accounts: 'accounts', manager: 'manager', dispatch: 'dispatch' }
+const VIEW_ZONE = { production: 'production', yarn: 'yarn', finished: 'finished' }
 
 export function useSummary() {
   const machines = useFactoryStore((s) => s.machines)
   const workers = useFactoryStore((s) => s.workers)
   const maintenance = useFactoryStore((s) => s.maintenance)
-  return useMemo(() => computeSummary({ machines, workers, maintenance }), [machines, workers, maintenance])
+  const staffing = useFactoryStore((s) => s.staffing)
+  const emsSummary = useFactoryStore((s) => s.emsSummary)
+  return useMemo(() => computeSummary({ machines, workers, maintenance, staffing, emsSummary }), [machines, workers, maintenance, staffing, emsSummary])
 }
 
-function useClock() {
+export function useClock() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000 * 15)
@@ -31,7 +34,7 @@ function useClock() {
   return now
 }
 
-function Logo({ className = 'h-10 w-10' }) {
+export function Logo({ className = 'h-10 w-10' }) {
   return (
     <svg viewBox="0 0 40 40" className={className}>
       <defs>
@@ -52,16 +55,20 @@ function Logo({ className = 'h-10 w-10' }) {
 
 export function Brand() {
   const now = useClock()
+  const mode = useDataMode()
+  const name = useFactoryStore((s) => s.settings?.general.factoryName ?? 'SHREE SATIJI TEXTILES')
+  const shift = useFactoryStore((s) => s.staffing?.shiftInfo)
   const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   return (
     <div className="glass pointer-events-auto flex items-center gap-3 rounded-2xl px-3.5 py-3 md:px-4">
       <Logo className="h-9 w-9 shrink-0 md:h-11 md:w-11" />
       <div className="min-w-0">
-        <div className="truncate text-[13px] font-extrabold tracking-[0.14em] text-amber-200 md:text-[15px]">SHREE SATIJI TEXTILES</div>
+        <div className="truncate text-[13px] font-extrabold tracking-[0.14em] text-amber-200 md:text-[15px]">{name}</div>
         <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.28em] text-slate-400 md:text-[11px]">
           3D FACTORY VIEW
-          <span className="hidden items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] tracking-wider text-emerald-300 sm:flex">
-            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-400" /> {USING_MOCK ? 'DEMO' : 'LIVE'} · {time}
+          <span className={`hidden items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] tracking-wider sm:flex ${mode.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+            <span className={`pulse-dot h-1.5 w-1.5 rounded-full ${mode.ok ? 'bg-emerald-400' : 'bg-red-400'}`} /> {mode.label} · {time}
+            {shift && <> · {shift.name}</>}
           </span>
         </div>
       </div>
@@ -69,7 +76,7 @@ export function Brand() {
   )
 }
 
-function ToolButton({ icon: Icon, label, active, onClick, kbd }) {
+function ToolButton({ icon: Icon, label, active, onClick, kbd, iconOnly = false }) {
   return (
     <button
       onClick={onClick}
@@ -79,13 +86,22 @@ function ToolButton({ icon: Icon, label, active, onClick, kbd }) {
       }`}
     >
       <Icon className="h-4 w-4" />
-      <span className="hidden xl:inline">{label}</span>
+      <span className={iconOnly ? 'sr-only' : 'hidden xl:inline'}>{label}</span>
     </button>
   )
 }
 
+/** Toggle the procedural factory sound (must run inside a user gesture). */
+export async function toggleSound() {
+  const st = useFactoryStore.getState()
+  if (st.soundOn) {
+    factorySound.disable()
+    st.setSoundOn(false)
+  } else if (await factorySound.enable()) st.setSoundOn(true)
+}
+
 export function Toolbar() {
-  const { mode, setMode, showLabels, toggleLabels, showFlow, toggleFlow, quality, setQuality, setHelpOpen, setPresentIndex, setPresentPaused } = useFactoryStore()
+  const { mode, setMode, showLabels, toggleLabels, showFlow, toggleFlow, openView, toggleOpenView, quality, setQuality, setHelpOpen, setPresentIndex, setPresentPaused } = useFactoryStore()
   const [fs, setFs] = useState(false)
   useEffect(() => {
     const on = () => setFs(!!document.fullscreenElement)
@@ -93,6 +109,7 @@ export function Toolbar() {
     return () => document.removeEventListener('fullscreenchange', on)
   }, [])
   const nextQ = { high: 'balanced', balanced: 'performance', performance: 'high' }
+  const soundOn = useFactoryStore((s) => s.soundOn)
   return (
     <div className="glass pointer-events-auto flex flex-wrap items-center gap-0.5 rounded-2xl p-1">
       <ToolButton
@@ -101,6 +118,13 @@ export function Toolbar() {
         kbd="G"
         active={mode === 'walk'}
         onClick={() => setMode(mode === 'walk' ? 'orbit' : 'walk')}
+      />
+      <ToolButton
+        icon={Plane}
+        label="Free Fly"
+        kbd="V"
+        active={mode === 'fly'}
+        onClick={() => setMode(mode === 'fly' ? 'orbit' : 'fly')}
       />
       <ToolButton
         icon={Presentation}
@@ -118,8 +142,10 @@ export function Toolbar() {
         }}
       />
       <div className="mx-1 h-6 w-px bg-white/10" />
+      <ToolButton icon={openView ? Eye : EyeOff} label={openView ? 'Open view' : 'Roof on'} active={openView} onClick={toggleOpenView} kbd="O" />
       <ToolButton icon={Tag} label="Labels" active={showLabels} onClick={toggleLabels} kbd="L" />
       <ToolButton icon={Workflow} label="Flow" active={showFlow} onClick={toggleFlow} kbd="F" />
+      <ToolButton icon={soundOn ? Volume2 : VolumeX} label="Sound" active={soundOn} onClick={toggleSound} kbd="M" />
       <button
         onClick={() => setQuality(nextQ[quality])}
         title="Render quality"
@@ -131,9 +157,11 @@ export function Toolbar() {
       <ToolButton
         icon={fs ? Minimize : Maximize}
         label="Fullscreen"
+        iconOnly
         onClick={() => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}
       />
-      <ToolButton icon={CircleHelp} label="Help" onClick={() => setHelpOpen(true)} kbd="H" />
+      <ToolButton icon={Settings} label="Settings" onClick={() => useFactoryStore.getState().setSettingsOpen(true)} kbd="," />
+      <ToolButton icon={CircleHelp} label="Help" onClick={() => setHelpOpen(true)} kbd="H" iconOnly />
     </div>
   )
 }
@@ -153,6 +181,16 @@ function Metric({ icon: Icon, label, value, sub, color = 'text-white', children 
   )
 }
 
+const EMS_CHIPS = [
+  ['b90', '90-100', '#ABDB19'],
+  ['b80', '80-90', '#FFB500'],
+  ['b75', '75-80', '#FF84F1'],
+  ['b0', '<75', '#C738EB'],
+  ['manual', 'Manual', '#E60016'],
+  ['filler', 'Filler', '#6C82FC'],
+  ['unload', 'Unload', '#B4572C'],
+]
+
 export function StatusPanel({ compact = false }) {
   const s = useSummary()
   const machines = useFactoryStore((st) => st.machines)
@@ -161,7 +199,7 @@ export function StatusPanel({ compact = false }) {
       <div className="glass pointer-events-auto grid grid-cols-4 gap-1 rounded-2xl p-1.5 text-center">
         {[
           ['Machines', `${s.machinesRunning}/${s.machinesTotal}`],
-          ['Workers', s.workersPresent],
+          ['Operators', `${s.operatorsPresent}/${s.operatorsRoster}`],
           ['Prod. m', num(s.production)],
           ['Eff.', `${s.efficiency.toFixed(1)}%`],
         ].map(([l, v]) => (
@@ -191,7 +229,17 @@ export function StatusPanel({ compact = false }) {
             ))}
           </div>
         </Metric>
-        <Metric icon={Users} label="Workers" value={s.workersPresent} sub="on shift" />
+        <button
+          className="text-left"
+          title="Open attendance"
+          onClick={() => useFactoryStore.getState().setSettingsOpen(true, 'attendance')}
+        >
+          <Metric icon={Users} label="Operators" value={`${s.operatorsPresent}/${s.operatorsRoster}`} sub="present" color={s.uncovered ? 'text-rose-300' : 'text-white'}>
+            <div className="mt-1 text-[10px] text-slate-400">
+              1 per {s.perOperator} looms · {s.workersPresent} staff
+            </div>
+          </Metric>
+        </button>
         <Metric icon={Layers} label="Today's Prod." value={num(s.production)} sub="m" color="text-sky-300" />
         <Metric icon={Gauge} label="Efficiency" value={`${s.efficiency.toFixed(1)}%`} color="text-amber-300">
           <div className="mt-1.5">
@@ -199,12 +247,59 @@ export function StatusPanel({ compact = false }) {
           </div>
         </Metric>
       </div>
-      <div className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-slate-400">
-        <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-yellow-300" /> Load {s.power.toFixed(1)} kW</span>
-        <span>
-          <span className="text-amber-300">{s.machinesIdle} idle</span> · <span className="text-rose-300">{s.machinesMaintenance} maint.</span>
-        </span>
-      </div>
+      {s.ems ? (
+        <>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-white/[0.04] px-2.5 py-1.5">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Avg. RPM</div>
+              <div className="text-sm font-bold tabular-nums text-sky-300">{s.ems.avgRpm?.toFixed(2)}</div>
+            </div>
+            <div className="rounded-xl bg-white/[0.04] px-2.5 py-1.5">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Avg. Pick</div>
+              <div className="text-sm font-bold tabular-nums text-violet-300">{s.ems.avgPick?.toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {EMS_CHIPS.map(([key, label, color]) => (
+              <span key={key} title={`${label}: ${s.ems[key]} looms (as in EMS)`} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold text-slate-900" style={{ background: color }}>
+                {s.ems[key]} <span className="font-semibold opacity-80">{label}</span>
+              </span>
+            ))}
+          </div>
+          {(s.ems.beamsSoon?.length > 0 || s.ems.spareBeams?.length > 0) && (
+            <div className="mt-2 rounded-xl bg-white/[0.04] px-2.5 py-2">
+              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400">Beams finishing first</div>
+              {(s.ems.beamsSoon || []).slice(0, 4).map((b) => (
+                <div key={b.id} className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span className="font-semibold">{b.id}</span>
+                  <span className="tabular-nums text-sky-300">{b.etaHours < 48 ? `${Math.floor(b.etaHours)} h ${Math.round((b.etaHours % 1) * 60)} m` : `${(b.etaHours / 24).toFixed(1)} days`}</span>
+                  <span className="tabular-nums text-slate-500">{Math.round(b.beamMeters)} m</span>
+                </div>
+              ))}
+              <div className="mt-1.5 border-t border-white/5 pt-1.5 text-[10px] text-slate-400">
+                Spare beams in store: <span className="font-semibold text-slate-200">{s.ems.spareBeams?.length ?? 0}</span>
+                {s.ems.spareMeters ? <> · {s.ems.spareMeters.toLocaleString('en-IN')} m</> : null}
+              </div>
+            </div>
+          )}
+          <div className="mt-1.5 text-[10px] text-slate-500">Numbers exactly as in your EMS · {s.machinesRunning} running, {s.machinesIdle} stopped</div>
+        </>
+      ) : (
+        <div className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-slate-400">
+          <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-yellow-300" /> Load {s.power.toFixed(1)} kW</span>
+          <span>
+            <span className="text-amber-300">{s.machinesIdle} idle</span> · <span className="text-rose-300">{s.machinesMaintenance} maint.</span>
+          </span>
+        </div>
+      )}
+      {s.uncovered > 0 && (
+        <button
+          onClick={() => useFactoryStore.getState().setSettingsOpen(true, 'staffing')}
+          className="mt-2 w-full rounded-xl bg-rose-500/12 px-2.5 py-1.5 text-left text-[11px] font-semibold text-rose-200 ring-1 ring-rose-400/30 hover:bg-rose-500/20"
+        >
+          {s.uncovered} looms have no operator — need {s.operatorsRequired} operators present
+        </button>
+      )}
     </div>
   )
 }
@@ -226,7 +321,7 @@ export function NavMenu({ horizontal = false }) {
       {!horizontal && <div className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Navigate</div>}
       {NAV_VIEWS.map((v, i) => {
         const Icon = VIEW_ICONS[v]
-        const active = mode !== 'walk' && (activeView === v || (!activeView && VIEW_ZONE[v] && VIEW_ZONE[v] === currentZone))
+        const active = !(mode === 'walk' || mode === 'fly') && (activeView === v || (!activeView && VIEW_ZONE[v] && VIEW_ZONE[v] === currentZone))
         return (
           <button
             key={v}
@@ -301,7 +396,7 @@ export function Tooltip() {
   const show = hovered && mode === 'orbit'
   const st = hovered?.status && STATUS_STYLES[hovered.status]
   return (
-    <div ref={ref} className="pointer-events-none fixed left-0 top-0 z-50" style={{ opacity: show ? 1 : 0, transition: 'opacity .12s' }}>
+    <div ref={ref} className="hover-tooltip pointer-events-none fixed left-0 top-0 z-50" style={{ opacity: show ? 1 : 0, transition: 'opacity .12s' }}>
       {show && (
         <div className="glass max-w-[260px] rounded-xl px-3 py-2">
           <div className="flex items-center gap-2 text-[13px] font-bold text-white">

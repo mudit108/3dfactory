@@ -1,10 +1,10 @@
 // Yarn stock room and finished goods warehouse.
 import { useMemo } from 'react'
-import { yarnRackPlacements, finishedRackPlacements, YARN_RACK, FG_RACK, RECEIVING_DOOR } from '../data/layout'
+import { yarnRackPlacements, finishedRackPlacements, YARN_RACK, FG_RACK, RECEIVING_DOOR, FG_DOOR, BUILDING } from '../data/layout'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { Interactive } from '../components/Interactive'
 import { YarnRack, FabricRack } from '../components/Racks'
-import { CartonStack, RollStack, BaleStack, PalletJack, Forklift, Pallet } from '../components/Props'
+import { CartonStack, RollStack, BaleStack, PalletJack, Pallet } from '../components/Props'
 import { Box, Label, RBox } from '../components/primitives'
 import { MAT, colorMaterial } from './materials'
 import { ZoneBanner } from './ProductionZone'
@@ -55,27 +55,26 @@ export function YarnStore() {
         )
       })}
       {/* receiving area near the left-wall shutter */}
-      <ShutterDoor position={[-49.9, 0, (RECEIVING_DOOR.minZ + RECEIVING_DOOR.maxZ) / 2]} rotation={Math.PI / 2} width={RECEIVING_DOOR.maxZ - RECEIVING_DOOR.minZ} height={RECEIVING_DOOR.height} />
-      <CartonStack position={[-46.5, 0, 2.2]} ny={3} seed={3} wrap />
-      <CartonStack position={[-46.5, 0, 4.0]} ny={2} seed={5} wrap />
-      <CartonStack position={[-44.8, 0, 2.2]} ny={3} seed={7} />
-      <CartonStack position={[-46.5, 0, 10.5]} ny={2} seed={11} />
-      <CartonStack position={[-44.8, 0, 10.5]} ny={3} seed={13} wrap />
-      <WeighScale position={[-42.5, 0, 9.5]} />
-      <PalletJack position={[-43.2, 0, 5.5]} rotation={-0.6} />
-      <Forklift position={[-38.6, 0, 9.8]} rotation={Math.PI} />
-      <Pallet position={[-36.4, 0, 11.6]} />
-      <Pallet position={[-36.4, 0.145, 11.6]} />
-      <Pallet position={[-36.4, 0.29, 11.6]} />
+      <ShutterDoor position={[BUILDING.minX + 0.1, 0, (RECEIVING_DOOR.minZ + RECEIVING_DOOR.maxZ) / 2]} rotation={Math.PI / 2} width={RECEIVING_DOOR.maxZ - RECEIVING_DOOR.minZ} height={RECEIVING_DOOR.height} />
+      <CartonStack position={[-51.5, 0, 9.4]} ny={3} seed={3} wrap />
+      <CartonStack position={[-51.5, 0, 11.2]} ny={2} seed={5} wrap />
+      <CartonStack position={[-49.8, 0, 9.4]} ny={3} seed={7} />
+      <CartonStack position={[-51.5, 0, 18.6]} ny={2} seed={11} />
+      <CartonStack position={[-49.8, 0, 18.6]} ny={3} seed={13} wrap />
+      <WeighScale position={[-47.4, 0, 17.6]} />
+      <PalletJack position={[-48.2, 0, 13.6]} rotation={-0.6} />
+      <Pallet position={[-40.6, 0, 19.8]} />
+      <Pallet position={[-40.6, 0.145, 19.8]} />
+      <Pallet position={[-40.6, 0.29, 19.8]} />
       <Label
         width={2.2}
         height={0.55}
-        position={[-49.7, 5.2, 6]}
+        position={[BUILDING.minX + 0.3, 5.2, 13]}
         rotation={[0, Math.PI / 2, 0]}
         opts={{ width: 512, height: 128, bg: '#1e293b', radius: 8, stripe: '#60a5fa', lines: [{ text: 'YARN RECEIVING', size: 52, color: '#fff', weight: 800 }] }}
       />
-      <ZoneBanner text="YARN STOCK" sub="RAW MATERIAL · FILAMENT YARN" position={[-40.5, 6.3, 12]} width={6.4} accent="#60a5fa" />
-      <ZoneBanner text="YARN STOCK" position={[-31.2, 5.8, -13]} width={4.2} accent="#60a5fa" rotation={Math.PI / 2} />
+      <ZoneBanner text="YARN STOCK" sub="RAW MATERIAL · FILAMENT YARN" position={[-45.5, 6.4, 8.6]} width={6.4} accent="#60a5fa" />
+      <ZoneBanner text="YARN STOCK" position={[-36.3, 5.8, -7]} width={4.2} accent="#60a5fa" rotation={Math.PI / 2} />
     </group>
   )
 }
@@ -103,18 +102,23 @@ export function FinishedGoods() {
         )
       })}
       {/* floor stacks & bales: one clickable lot */}
-      <Interactive type="finished" id="FG-FLOOR" label="Finished Goods — Floor Lots" sub={floor ? `${floor.availableM.toLocaleString('en-IN')} m staged` : ''}>
-        {[-27.5, -24.8, -22.1, -19.4, -16.7].map((z, i) => (
-          <RollStack key={z} position={[46.8, 0, z]} rows={4} layers={i % 2 ? 3 : 4} colors={[['#e8e6df'], ['#28324a', '#3b3f45'], ['#d9d2c1'], ['#8fb3cf'], ['#e8e6df', '#c9b99a']][i]} seed={i + 21} />
+      <Interactive type="finished" id="FG-FLOOR" label="Finished Stock — Floor Lots" sub={floor ? `${floor.availableM.toLocaleString('en-IN')} m staged` : ''}>
+        {[-20, -17.3, -14.6, -11.9, -9.2].map((z, i) => (
+          <RollStack key={z} position={[51.8, 0, z]} rows={4} layers={i % 2 ? 3 : 4} colors={[['#e8e6df'], ['#28324a', '#3b3f45'], ['#d9d2c1'], ['#8fb3cf'], ['#e8e6df', '#c9b99a']][i]} seed={i + 21} />
         ))}
-        <BaleStack position={[44.6, 0, -8.6]} n={4} />
-        <BaleStack position={[44.6, 0, -6.9]} n={3} color="#dcd6c6" />
-        <BaleStack position={[46.4, 0, -8.6]} n={4} />
-        <CartonStack position={[46.4, 0, -6.6]} ny={3} seed={33} wrap />
-        <CartonStack position={[46.4, 0, -4.6]} ny={2} seed={35} />
+        <BaleStack position={[49.6, 0, 0.6]} n={4} />
+        <BaleStack position={[49.6, 0, 2.3]} n={3} color="#dcd6c6" />
+        <BaleStack position={[51.4, 0, 0.6]} n={4} />
+        <CartonStack position={[51.4, 0, 2.6]} ny={3} seed={33} wrap />
+        <CartonStack position={[51.4, 0, 4.6]} ny={2} seed={35} />
+        <RollStack position={[51.6, 0, 16.6]} rows={5} layers={4} colors={['#e8e6df', '#d9d2c1']} seed={41} />
+        <RollStack position={[51.6, 0, 19.2]} rows={5} layers={3} colors={['#28324a']} seed={42} />
+        <RollStack position={[48.6, 0, 18.0]} rotation={Math.PI / 2} rows={4} layers={3} colors={['#1f2124', '#3b3f45']} seed={43} />
       </Interactive>
-      <PalletJack position={[43.4, 0, -14.5]} rotation={1.2} />
-      <ZoneBanner text="FINISHED GOODS" sub="GRADED · LOT-TRACKED" position={[34.4, 6.2, -9.6]} width={6.8} accent="#fbbf24" />
+      <ShutterDoor position={[BUILDING.maxX - 0.1, 0, (FG_DOOR.minZ + FG_DOOR.maxZ) / 2]} rotation={-Math.PI / 2} width={FG_DOOR.maxZ - FG_DOOR.minZ} height={FG_DOOR.height} openFrac={0.4} />
+      <PalletJack position={[48.4, 0, -7]} rotation={1.2} />
+      <ZoneBanner text="FINISHED STOCK" sub="GRADED · LOT-TRACKED" position={[39.4, 6.2, -1.6]} width={6.8} accent="#fbbf24" />
+      <ZoneBanner text="FINISHED STOCK" position={[25.6, 5.8, -8]} width={4.6} accent="#fbbf24" rotation={Math.PI / 2} />
     </group>
   )
 }

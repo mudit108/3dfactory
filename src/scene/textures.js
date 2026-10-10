@@ -435,8 +435,8 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-export const companySignTexture = () =>
-  memo('companySign', () => {
+export const companySignTexture = (name = 'SHREE SATIJI TEXTILES', tagline = 'TEXTILE MANUFACTURING') =>
+  memo('companySign' + name + '|' + tagline, () => {
     const W = 2048
     const H = 320
     const c = makeCanvas(W, H)
@@ -475,13 +475,18 @@ export const companySignTexture = () =>
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#f3d27a'
-    ctx.font = `800 132px ${FONT}`
+    let size = 132
+    ctx.font = `800 ${size}px ${FONT}`
     if ('letterSpacing' in ctx) ctx.letterSpacing = '10px'
-    ctx.fillText('SHREE SATIJI TEXTILES', 300, H * 0.42)
+    while (ctx.measureText(name).width > W - 360 && size > 50) {
+      size -= 4
+      ctx.font = `800 ${size}px ${FONT}`
+    }
+    ctx.fillText(name, 300, H * 0.42)
     ctx.fillStyle = '#cfd6e2'
     ctx.font = `600 52px ${FONT}`
     if ('letterSpacing' in ctx) ctx.letterSpacing = '26px'
-    ctx.fillText('TEXTILE MANUFACTURING', 306, H * 0.78)
+    ctx.fillText(tagline, 306, H * 0.78)
     return toTexture(c, { wrap: false })
   })
 
@@ -761,3 +766,228 @@ export const beamTexture = () =>
     ctx.fillRect(0, 0, W, H)
     return toTexture(c, { wrap: false })
   })
+
+// ---------------------------------------------------------------------------
+// Realism helpers: grime / roughness variation and a whole-floor wear map.
+// ---------------------------------------------------------------------------
+
+/** Tileable paint grime: slightly darker smudges, edge dirt, a few scratches. */
+export const grimeTexture = () =>
+  toTexture(
+    memo('grime', () => {
+      const S = 512
+      const c = makeCanvas(S, S)
+      const ctx = c.getContext('2d')
+      const r = rng(41)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, S, S)
+      blotches(ctx, S, S, 70, r, ['#e2ded6', '#ece9e2', '#dcd8cf'], 20, 110, 0.14)
+      blotches(ctx, S, S, 14, r, ['#c4bdb0', '#b8b1a3'], 8, 30, 0.07) // oily finger marks
+      speckle(ctx, S, S, 5000, r, ['#dedad2', '#f4f2ee', '#d8d4ca'], 1, 2, 0.18)
+      // lower edge dirt (box faces map v=0 at the bottom)
+      const g = ctx.createLinearGradient(0, S * 0.72, 0, S)
+      g.addColorStop(0, 'rgba(110,100,85,0)')
+      g.addColorStop(1, 'rgba(110,100,85,0.22)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, S, S)
+      // scratches
+      ctx.strokeStyle = 'rgba(140,140,140,0.25)'
+      for (let i = 0; i < 18; i++) {
+        const x = r() * S
+        const y = r() * S
+        const a = r() * Math.PI
+        const l = 10 + r() * 40
+        ctx.lineWidth = 0.6 + r()
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+        ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l)
+        ctx.stroke()
+      }
+      return c
+    }),
+  )
+
+/** Greyscale roughness variation (linear). Mid grey ≈ 1.0 × material roughness. */
+export const roughNoiseTexture = (repeat = [1, 1]) =>
+  toTexture(
+    memo('roughNoise', () => {
+      const S = 256
+      const c = makeCanvas(S, S)
+      const ctx = c.getContext('2d')
+      const r = rng(77)
+      ctx.fillStyle = '#d0d0d0'
+      ctx.fillRect(0, 0, S, S)
+      blotches(ctx, S, S, 60, r, ['#a0a0a0', '#ffffff', '#b8b8b8'], 10, 60, 0.6)
+      speckle(ctx, S, S, 3000, r, ['#909090', '#ffffff'], 1, 2, 0.4)
+      return c
+    }),
+    { repeat, srgb: false },
+  )
+
+/**
+ * Whole-floor wear maps in world space (x -55..55 → u, z -22..22 → canvas y).
+ *  kind 'ao'    : white = clean, dark = dirt/stains (used as aoMap)
+ *  kind 'rough' : white = dry concrete, dark = wet / polished (roughnessMap)
+ *  kind 'color' : multiply tint (white = none)
+ */
+export function floorWearTexture(kind, { loomSpots = [], aisles = [] } = {}) {
+  return toTexture(
+    memo('floorWear' + kind, () => {
+      const W = 2200
+      const H = 880
+      const px = (x) => ((x + 55) / 110) * W
+      const pz = (z) => ((z + 22) / 44) * H
+      const sc = W / 110 // px per metre
+      const c = makeCanvas(W, H)
+      const ctx = c.getContext('2d')
+      const r = rng(kind === 'rough' ? 5 : 9)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, W, H)
+      const blob = (x, z, rad, col, a) => {
+        const g = ctx.createRadialGradient(px(x), pz(z), 0, px(x), pz(z), rad * sc)
+        g.addColorStop(0, col)
+        g.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.globalAlpha = a
+        ctx.fillStyle = g
+        ctx.fillRect(px(x) - rad * sc, pz(z) - rad * sc, rad * sc * 2, rad * sc * 2)
+        ctx.globalAlpha = 1
+      }
+      // under / around each loom: water + oil
+      for (const [x, z] of loomSpots) {
+        if (kind === 'rough') {
+          for (let k = 0; k < 6; k++) blob(x - 1.6 + r() * 3.4, z + 0.2 + r() * 1.6, 0.5 + r() * 0.9, '#202020', 0.7)
+          blob(x - 1.5, z - 1.2, 0.8, '#303030', 0.6) // drain side
+        } else if (kind === 'ao') {
+          blob(x, z - 0.1, 2.1, '#7a7468', 0.45)
+          for (let k = 0; k < 3; k++) blob(x - 1.6 + r() * 3.2, z - 0.8 + r() * 1.6, 0.25 + r() * 0.35, '#3c3528', 0.55) // oil spots
+        } else {
+          for (let k = 0; k < 4; k++) blob(x - 1.6 + r() * 3.4, z + 0.3 + r() * 1.4, 0.4 + r() * 0.7, '#9aa0a0', 0.35)
+          for (let k = 0; k < 2; k++) blob(x - 1.4 + r() * 2.8, z - 0.7 + r() * 1.4, 0.2 + r() * 0.3, '#5a5040', 0.45)
+        }
+      }
+      // tyre tracks & foot traffic along aisles
+      for (const a of aisles) {
+        const [[x0, z0], [x1, z1]] = a
+        const len = Math.hypot(x1 - x0, z1 - z0) * sc
+        const ang = Math.atan2(pz(z1) - pz(z0), px(x1) - px(x0))
+        ctx.save()
+        ctx.translate(px(x0), pz(z0))
+        ctx.rotate(ang)
+        if (kind === 'ao' || kind === 'color') {
+          ctx.globalAlpha = kind === 'ao' ? 0.18 : 0.12
+          ctx.fillStyle = '#4a463e'
+          for (const off of [-0.55, 0.55]) {
+            for (let k = 0; k < 4; k++) ctx.fillRect(0, (off + (r() - 0.5) * 0.12) * sc, len, 0.12 * sc)
+          }
+          ctx.globalAlpha = kind === 'ao' ? 0.12 : 0.08
+          ctx.fillRect(0, -1.2 * sc, len, 2.4 * sc)
+        } else {
+          ctx.globalAlpha = 0.25
+          ctx.fillStyle = '#707070' // worn smooth
+          ctx.fillRect(0, -1.0 * sc, len, 2.0 * sc)
+        }
+        ctx.restore()
+        ctx.globalAlpha = 1
+      }
+      // dirt collected along the walls
+      if (kind !== 'rough') {
+        const edge = (x, y, w, h, gx0, gy0, gx1, gy1) => {
+          const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
+          g.addColorStop(0, kind === 'ao' ? 'rgba(80,72,60,0.55)' : 'rgba(110,100,85,0.4)')
+          g.addColorStop(1, 'rgba(0,0,0,0)')
+          ctx.fillStyle = g
+          ctx.fillRect(x, y, w, h)
+        }
+        const d = 1.4 * sc
+        edge(0, 0, W, d, 0, 0, 0, d)
+        edge(0, H - d, W, d, 0, H, 0, H - d)
+        edge(0, 0, d, H, 0, 0, d, 0)
+        edge(W - d, 0, d, H, W, 0, W - d, 0)
+      }
+      // random scattered stains
+      for (let i = 0; i < 160; i++) {
+        const x = -54 + r() * 108
+        const z = -21 + r() * 42
+        if (kind === 'rough') blob(x, z, 0.2 + r() * 0.8, '#404040', 0.35)
+        else blob(x, z, 0.15 + r() * 0.9, kind === 'ao' ? '#6a6458' : '#8a8274', 0.25)
+      }
+      return c
+    }),
+    { srgb: kind === 'color', wrap: false, aniso: 4 },
+  )
+}
+
+/** Wall-mounted calendar / shift board / clock face textures. */
+export const clockTexture = () =>
+  toTexture(
+    memo('clock', () => {
+      const S = 256
+      const c = makeCanvas(S, S)
+      const ctx = c.getContext('2d')
+      ctx.fillStyle = '#f7f5ef'
+      ctx.beginPath()
+      ctx.arc(S / 2, S / 2, S / 2 - 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.lineWidth = 10
+      ctx.strokeStyle = '#222'
+      ctx.stroke()
+      ctx.fillStyle = '#222'
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2
+        ctx.fillRect(S / 2 + Math.sin(a) * 100 - 3, S / 2 - Math.cos(a) * 100 - 3, 6, 6)
+      }
+      return c
+    }),
+    { wrap: false },
+  )
+
+export const noticeBoardTexture = (title = 'PRODUCTION BOARD') =>
+  toTexture(
+    memo('notice' + title, () => {
+      const W = 512
+      const H = 340
+      const c = makeCanvas(W, H)
+      const ctx = c.getContext('2d')
+      const r = rng(13)
+      ctx.fillStyle = '#f2f1ec'
+      ctx.fillRect(0, 0, W, H)
+      ctx.fillStyle = '#1f3b63'
+      ctx.fillRect(0, 0, W, 54)
+      ctx.fillStyle = '#fff'
+      ctx.font = `700 30px ${FONT}`
+      ctx.textAlign = 'center'
+      ctx.fillText(title, W / 2, 38)
+      // hand-written-looking rows
+      ctx.strokeStyle = '#c9c6bc'
+      ctx.lineWidth = 1
+      for (let y = 80; y < H - 10; y += 26) {
+        ctx.beginPath()
+        ctx.moveTo(14, y)
+        ctx.lineTo(W - 14, y)
+        ctx.stroke()
+        ctx.strokeStyle = '#2a4da0'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        let x = 20
+        ctx.moveTo(x, y - 8)
+        while (x < 20 + 120 + r() * 300) {
+          x += 4 + r() * 6
+          ctx.lineTo(x, y - 6 - r() * 8)
+        }
+        ctx.stroke()
+        ctx.strokeStyle = '#c9c6bc'
+        ctx.lineWidth = 1
+      }
+      // pinned paper notes
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = ['#fff59d', '#ffcc80', '#b3e5fc'][i]
+        ctx.fillRect(330 + i * 50, 200 + i * 20, 70, 70)
+        ctx.fillStyle = '#c62828'
+        ctx.beginPath()
+        ctx.arc(365 + i * 50, 206 + i * 20, 5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      return c
+    }),
+    { wrap: false },
+  )

@@ -28,7 +28,7 @@ export default function CameraRig() {
   })
 
   useEffect(() => {
-    if (!flight || mode === 'walk') return
+    if (!flight || (mode === 'walk' || mode === 'fly')) return
     const fromTarget = controls.current ? controls.current.target.clone() : new THREE.Vector3(camState.targetX, 0, camState.targetZ)
     anim.current = {
       fromPos: camera.position.clone(),
@@ -58,20 +58,13 @@ export default function CameraRig() {
       v1.applyAxisAngle(THREE.Object3D.DEFAULT_UP, dt * 0.035)
       camera.position.copy(c.target).add(v1)
     }
-    if (c && mode !== 'walk') {
-      c.target.x = THREE.MathUtils.clamp(c.target.x, -95, 95)
-      c.target.z = THREE.MathUtils.clamp(c.target.z, -75, 85)
-      c.target.y = THREE.MathUtils.clamp(c.target.y, 0, 14)
-      if (camera.position.y < 0.6) camera.position.y = 0.6
-    }
-
     // shared state for minimap
     camera.getWorldDirection(dir)
     camState.x = camera.position.x
     camState.y = camera.position.y
     camState.z = camera.position.z
     camState.yaw = Math.atan2(dir.x, dir.z)
-    if (c && mode !== 'walk') {
+    if (c && !(mode === 'walk' || mode === 'fly')) {
       camState.targetX = c.target.x
       camState.targetZ = c.target.z
     } else {
@@ -81,26 +74,29 @@ export default function CameraRig() {
     zoneTimer.current += dt
     if (zoneTimer.current > 0.3) {
       zoneTimer.current = 0
-      const z = mode === 'walk' ? zoneAt(camera.position.x, camera.position.z) : zoneAt(camState.targetX, camState.targetZ)
+      const z = (mode === 'walk' || mode === 'fly') ? zoneAt(camera.position.x, camera.position.z) : zoneAt(camState.targetX, camState.targetZ)
       useFactoryStore.getState().setCurrentZone(z)
     }
   })
 
-  if (mode === 'walk') return null
+  if ((mode === 'walk' || mode === 'fly')) return null
   return (
     <OrbitControls
       ref={controls}
       makeDefault
       enableDamping
       dampingFactor={0.08}
-      maxPolarAngle={1.5}
-      minDistance={2.5}
-      maxDistance={230}
+      minPolarAngle={0}
+      maxPolarAngle={Math.PI}
+      minDistance={0.3}
+      maxDistance={900}
       enabled={mode === 'orbit'}
       zoomSpeed={0.9}
       rotateSpeed={0.6}
       panSpeed={0.9}
-      screenSpacePanning={false}
+      screenSpacePanning
+      enablePan
+      keyPanSpeed={20}
       onStart={() => {
         anim.current = null
       }}

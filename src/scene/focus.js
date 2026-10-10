@@ -13,7 +13,9 @@ export function goToView(name, duration = 2) {
   if (!v) return
   const st = useFactoryStore.getState()
   st.setActiveView(name)
-  st.flyTo(v.position, v.target, duration)
+  const tall = typeof window !== 'undefined' && window.innerWidth / window.innerHeight < 0.85
+  const f = tall && v.portrait ? v.portrait : v
+  st.flyTo(f.position, f.target, duration)
 }
 
 export function focusOnKey(key) {

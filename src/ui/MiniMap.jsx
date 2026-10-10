@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { Map as MapIcon } from 'lucide-react'
-import { ZONES, loomPlacements, yarnRackPlacements, finishedRackPlacements, DISPATCH } from '../data/layout'
+import { ZONES, loomPlacements, yarnRackPlacements, finishedRackPlacements, BUILDING } from '../data/layout'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { camState } from '../scene/cameraState'
 import { goToView } from '../scene/focus'
 import { STATUS_STYLES } from './format'
 
-const ZONE_VIEW = { yarn: 'yarn', production: 'production', inspection: 'looms', finished: 'finished', dispatch: 'dispatch', accounts: 'accounts', manager: 'manager', entrance: 'entrance' }
+const ZONE_VIEW = { yarn: 'yarn', production: 'production', finished: 'finished' }
 
-export default function MiniMap({ size = 'md' }) {
+export default function MiniMap({ size = 'md', onNavigate }) {
   const marker = useRef()
   const cone = useRef()
   const target = useRef()
@@ -20,8 +20,8 @@ export default function MiniMap({ size = 'md' }) {
   useEffect(() => {
     let raf
     const tick = () => {
-      const x = Math.max(-60, Math.min(66, camState.x))
-      const z = Math.max(-38, Math.min(42, camState.z))
+      const x = Math.max(-58, Math.min(58, camState.x))
+      const z = Math.max(-25, Math.min(25, camState.z))
       const deg = (-camState.yaw * 180) / Math.PI
       if (marker.current) marker.current.setAttribute('transform', `translate(${x} ${z}) rotate(${deg})`)
       if (target.current) target.current.setAttribute('transform', `translate(${camState.targetX} ${camState.targetZ})`)
@@ -33,21 +33,23 @@ export default function MiniMap({ size = 'md' }) {
 
   const go = (zoneId) => {
     const st = useFactoryStore.getState()
-    if (st.mode === 'walk') return
+    if (st.mode === 'walk' || st.mode === 'fly') return
     if (st.mode === 'present') st.setMode('orbit')
+    st.clearSelection()
     setTimeout(() => goToView(ZONE_VIEW[zoneId]), 0)
+    onNavigate?.()
   }
 
-  const w = size === 'sm' ? 190 : 250
+  const w = size === 'full' ? Math.min(window.innerWidth - 56, 420, ((window.innerHeight * 0.32) * 116) / 50) : size === 'sm' ? 190 : 250
   return (
     <div className="glass pointer-events-auto rounded-2xl p-2" style={{ width: w + 16 }}>
       <div className="mb-1 flex items-center justify-between px-1">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
           <MapIcon className="h-3.5 w-3.5" /> Plant Map
         </span>
-        <span className="text-[10px] text-slate-500">100 × 60 m</span>
+        <span className="text-[10px] text-slate-500">110×44 m</span>
       </div>
-      <svg viewBox="-55 -36 122 76" width={w} height={(w * 76) / 122} className="block">
+      <svg viewBox="-58 -25 116 50" width={w} height={(w * 50) / 116} className="block">
         <defs>
           <radialGradient id="mm-cone" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="scale(14)">
             <stop offset="0" stopColor="#fbbf24" stopOpacity="0.55" />
@@ -57,8 +59,8 @@ export default function MiniMap({ size = 'md' }) {
             <path d="M10 0H0V10" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.3" />
           </pattern>
         </defs>
-        <rect x="-50" y="-30" width="100" height="60" rx="1" fill="#0b1220" stroke="#475569" strokeWidth="0.6" />
-        <rect x="-50" y="-30" width="100" height="60" fill="url(#mm-grid)" />
+        <rect x={BUILDING.minX} y={BUILDING.minZ} width={BUILDING.length} height={BUILDING.width} rx="1" fill="#0b1220" stroke="#475569" strokeWidth="0.6" />
+        <rect x={BUILDING.minX} y={BUILDING.minZ} width={BUILDING.length} height={BUILDING.width} fill="url(#mm-grid)" />
         {ZONES.map((z) => {
           const [x1, z1, x2, z2] = z.rect
           const active = currentZone === z.id
@@ -88,28 +90,25 @@ export default function MiniMap({ size = 'md' }) {
         {loomPlacements.map((p) => (
           <rect key={p.id} x={p.position[0] - 1.7} y={p.position[2] - 1.1} width="3.4" height="2.2" rx="0.3" fill={STATUS_STYLES[statusById[p.id] || 'running'].hex} fillOpacity="0.85" pointerEvents="none" />
         ))}
-        {/* truck */}
-        <rect x={DISPATCH.truck.position[0]} y={DISPATCH.truck.position[2] - 1.25} width="10" height="2.5" rx="0.4" fill="#94a3b8" fillOpacity="0.7" pointerEvents="none" />
         {/* entrance */}
-        <rect x="-10" y="29.3" width="7" height="1.4" fill="#e5e7eb" pointerEvents="none" />
-        {ZONES.filter((z) => z.id !== 'entrance').map((z) => {
+        <rect x="-4" y="21.3" width="7" height="1.4" fill="#e5e7eb" pointerEvents="none" />
+        {ZONES.map((z) => {
           const [x1, z1, x2, z2] = z.rect
-          const small = x2 - x1 < 14
           return (
             <text
               key={'t' + z.id}
               x={(x1 + x2) / 2}
-              y={z.id === 'production' ? z2 - 2.5 : (z1 + z2) / 2 + 1}
+              y={z2 - 2}
               textAnchor="middle"
-              fontSize={small ? 1.9 : 3}
+              fontSize={2.6}
               fontWeight="700"
               fill="#e2e8f0"
               fillOpacity="0.9"
               pointerEvents="none"
               style={{ letterSpacing: 0.3 }}
-              transform={z.id === 'inspection' ? `rotate(-90 ${(x1 + x2) / 2} ${(z1 + z2) / 2 + 1})` : undefined}
+              
             >
-              {z.id === 'manager' ? 'MGR' : z.id === 'accounts' ? 'ACCTS' : z.short}
+              {z.short}
             </text>
           )
         })}
@@ -118,7 +117,7 @@ export default function MiniMap({ size = 'md' }) {
         </g>
         <g ref={marker} pointerEvents="none">
           <path d="M0 0 L-7 14 A14 14 0 0 0 7 14 Z" fill="url(#mm-cone)" />
-          <circle r="2" fill={mode === 'walk' ? '#22d3ee' : '#fbbf24'} stroke="#0f172a" strokeWidth="0.6" />
+          <circle r="2" fill={mode === 'walk' || mode === 'fly' ? '#22d3ee' : '#fbbf24'} stroke="#0f172a" strokeWidth="0.6" />
         </g>
       </svg>
     </div>
