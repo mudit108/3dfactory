@@ -479,7 +479,8 @@ async function runStream() {
 const PUSH_URL = (env.PUSH_URL || '').replace(/\/$/, '')
 const PUSH_TOKEN = env.PUSH_TOKEN || ''
 const PUSH_BYPASS = env.PUSH_BYPASS || '' // Vercel 'Protection Bypass for Automation' secret, only needed if Vercel Authentication is on
-const PUSH_MS = Number(env.PUSH_MS || 4000)
+// 15 s keeps Upstash free tier (500K commands / month) comfortable: ~6K pushes a day
+const PUSH_MS = Number(env.PUSH_MS || 15000)
 let pushState = { enabled: !!(PUSH_URL && PUSH_TOKEN), lastOk: null, lastError: null, count: 0 }
 let lastPushedAt = 0
 let lastPushTry = 0

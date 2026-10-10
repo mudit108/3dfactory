@@ -12,6 +12,9 @@ import { goToView } from './scene/focus'
 import { useViewport } from './hooks/useViewport'
 import MobileHud from './ui/MobileHud'
 import Assistant from './ui/Assistant'
+import ReportsModal from './ui/ReportsModal'
+import HeatLegend from './ui/HeatLegend'
+import PhoneApp from './ui/PhoneApp'
 
 export default function App() {
   useFactoryData()
@@ -40,6 +43,18 @@ export default function App() {
   }, [mode])
 
   const orbit = mode === 'orbit'
+
+  // phones get a normal app layout with bottom tabs (the 3D factory is one of the tabs)
+  if (mobile)
+    return (
+      <div className="relative h-full w-full">
+        <PhoneApp />
+        {(mode === 'walk' || mode === 'fly') && <WalkthroughOverlay />}
+        {mode === 'present' && <PresentationOverlay />}
+        <HelpModal />
+        <SettingsModal />
+      </div>
+    )
 
   return (
     <div className="relative h-full w-full select-none">
@@ -101,6 +116,8 @@ export default function App() {
       <Tooltip />
       <HelpModal />
       <SettingsModal />
+      <ReportsModal />
+      <HeatLegend mobile={mobile} />
       <Assistant />
       <LoadingScreen />
     </div>

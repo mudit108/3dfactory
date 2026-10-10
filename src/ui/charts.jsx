@@ -1,3 +1,4 @@
+import { useId } from 'react'
 // Lightweight SVG charts (no chart library needed).
 
 export function RadialGauge({ value, max = 100, size = 110, color = '#34d399', label, sub }) {
@@ -58,8 +59,8 @@ export function Sparkline({ values, width = 120, height = 32, color = '#34d399',
   )
 }
 
-export function LineChart({ data, height = 110, color = '#f472b6', suffix = '' }) {
-  const width = 320
+export function LineChart({ data, height = 110, color = '#f472b6', suffix = '', width = 320 }) {
+  const gid = `lc-${useId().replace(/:/g, '')}`
   const max = Math.max(...data.map((d) => d.value)) * 1.08
   const min = Math.min(...data.map((d) => d.value)) * 0.9
   const span = max - min || 1
@@ -68,7 +69,7 @@ export function LineChart({ data, height = 110, color = '#f472b6', suffix = '' }
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }}>
       <defs>
-        <linearGradient id="lc-fill" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.35" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
@@ -76,7 +77,7 @@ export function LineChart({ data, height = 110, color = '#f472b6', suffix = '' }
       {[0.25, 0.5, 0.75].map((k) => (
         <line key={k} x1="20" x2={width - 20} y1={16 + k * (height - 38)} y2={16 + k * (height - 38)} stroke="rgba(255,255,255,0.06)" />
       ))}
-      <path d={`${path} L${pts[pts.length - 1][0]},${height - 22} L${pts[0][0]},${height - 22} Z`} fill="url(#lc-fill)" />
+      <path d={`${path} L${pts[pts.length - 1][0]},${height - 22} L${pts[0][0]},${height - 22} Z`} fill={`url(#${gid})`} />
       <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />
       {pts.map((p, i) => (
         <g key={i}>

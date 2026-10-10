@@ -20,7 +20,7 @@ import { dispatchData, qualityData, maintenanceTasks, companyInfo } from '../dat
 //  3. demo    - nothing set: built-in demo data
 const CLOUD_ENABLED = ['1', 'true'].includes(String(import.meta.env.VITE_EMS_CLOUD)) // cloud mode wins over a leftover bridge address
 const API_BASE = CLOUD_ENABLED ? '' : import.meta.env.VITE_EMS_API_URL || ''
-const CLOUD_ACTIVE = CLOUD_ENABLED
+export const CLOUD_ACTIVE = CLOUD_ENABLED
 export const USING_MOCK = !API_BASE && !CLOUD_ACTIVE
 
 export const ENDPOINTS = {
@@ -125,6 +125,7 @@ export async function getFactorySnapshot() {
 export function subscribeToLiveUpdates(onMachines, intervalMs = 4000) {
   let timer
   if (!USING_MOCK) {
+    if (CLOUD_ACTIVE) intervalMs = 15000 // the factory PC pushes every 15 s; no need to ask more often
     timer = setInterval(async () => {
       try { onMachines(await getMachines()) } catch (e) { console.warn(e) }
     }, intervalMs)

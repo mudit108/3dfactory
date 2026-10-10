@@ -1,13 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, X, Send, Bot } from 'lucide-react'
+import { MessageCircle, X, Send, Bot, Mic, Copy, Check } from 'lucide-react'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { answer, SUGGESTIONS } from '../services/assistant'
-import { focusOnKey } from '../scene/focus'
 import { useViewport } from '../hooks/useViewport'
+import { showLoom, openReports } from './navigate'
 
-function goLoom(id) {
-  useFactoryStore.getState().select({ type: 'machine', id, key: `machine:${id}` })
-  setTimeout(() => focusOnKey(`machine:${id}`), 0)
+const goLoom = showLoom
+
+const SpeechRec = typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null
+
+function CopyBtn({ text }) {
+  const [ok, setOk] = useState(false)
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text)
+          setOk(true)
+          setTimeout(() => setOk(false), 2000)
+        } catch {
+          /* ignore */
+        }
+      }}
+      className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/25"
+    >
+      {ok ? <Check size={13} /> : <Copy size={13} />} {ok ? 'Copied — paste in WhatsApp' : 'Copy report'}
+    </button>
+  )
 }
 
 function Bubble({ m, onAsk }) {
@@ -42,6 +61,10 @@ function Bubble({ m, onAsk }) {
               ))}
             </div>
           )}
+          {r.copy && <CopyBtn text={r.copy} />}
+          {r.focus && useFactoryStore.getState().phoneMode && (
+            <button onClick={() => goLoom(r.focus)} className="mt-2 rounded-lg bg-cyan-500/15 px-3 py-1.5 text-[13px] font-semibold text-cyan-200 active:bg-cyan-500/25">Open {r.focus} →</button>
+          )}
           {r.note && <p className="mt-2 text-[11px] text-amber-300/80">{r.note}</p>}
         </div>
         {r.chips?.length > 0 && (
@@ -56,34 +79,113 @@ function Bubble({ m, onAsk }) {
   )
 }
 
-export default function Assistant() {
-  const mode = useFactoryStore((s) => s.mode)
-  const selected = useFactoryStore((s) => s.selected)
-  const { mobile } = useViewport()
-  const [open, setOpen] = useState(false)
-  const [text, setText] = useState('')
-  const [msgs, setMsgs] = useState([])
-  const endRef = useRef(null)
-
-  const ask = (q) => {
-    q = (q || '').trim()
-    if (!q) return
+/** Ask a question from anywhere (e.g. the loom page's "Ask about it"). */
+export function askAssistant(q) {
+  q = (q || '').trim()
+  if (!q) return
+  {
     const st = useFactoryStore.getState()
     let reply
     try {
-      reply = answer(q, { machines: st.machines, summary: st.emsSummary, staffing: st.staffing })
+      reply = answer(q, { machines: st.machines, summary: st.emsSummary, staffing: st.staffing, history: st.history, factoryName: st.settings?.general.factoryName || undefined })
     } catch (e) {
       reply = { lines: ['Sorry, I could not work that out. Try "factory summary".'] }
     }
-    setMsgs((m) => [...m, { role: 'user', text: q }, { role: 'bot', reply }])
+    st.setChat((m) => [...m, { role: 'user', text: q }, { role: 'bot', reply }])
+    if (reply.focus && !st.phoneMode) goLoom(reply.focus)
+    if (reply.action?.type === 'reports') openReports()
+    if (reply.action?.type === 'heatmap') {
+      st.setColorBy(reply.action.id)
+      if (st.phoneMode && reply.action.id !== 'off') st.setPhoneTab('3d')
+    }
+  }
+}
+
+function useChat() {
+  const msgs = useFactoryStore((s) => s.chat)
+  const [text, setText] = useState('')
+  const ask = (q) => {
+    askAssistant(q)
     setText('')
-    if (reply.focus) goLoom(reply.focus)
   }
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [msgs, open])
+  // voice: speak a question (free, built into Chrome / Android / Safari)
+  const [listening, setListening] = useState(false)
+  const recRef = useRef(null)
+  const listen = () => {
+    if (!SpeechRec) return
+    if (listening) return recRef.current?.stop()
+    const rec = new SpeechRec()
+    rec.lang = 'en-IN'
+    rec.interimResults = true
+    rec.maxAlternatives = 1
+    let finalText = ''
+    rec.onresult = (e) => {
+      const t = Array.from(e.results).map((r) => r[0].transcript).join(' ')
+      setText(t)
+      if (e.results[e.results.length - 1].isFinal) finalText = t
+    }
+    rec.onend = () => {
+      setListening(false)
+      if (finalText) ask(finalText)
+    }
+    rec.onerror = () => setListening(false)
+    recRef.current = rec
+    setListening(true)
+    rec.start()
+  }
+  return { msgs, text, setText, ask, listen, listening }
+}
 
-  if (mode === 'walk' || mode === 'fly' || mode === 'present') return null
-  if (mobile && selected && !open) return null
+/** Messages + input. `big` = phone page (larger text and touch targets). */
+export function ChatBody({ big = false }) {
+  const { msgs, text, setText, ask, listen, listening } = useChat()
+  const endRef = useRef(null)
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' })
+  }, [msgs])
+  const chip = big ? 'rounded-full border border-white/15 px-3.5 py-2 text-[14px] text-slate-200 active:bg-white/10' : 'rounded-full border border-white/15 px-2.5 py-1 text-xs text-slate-300 hover:bg-white/10'
+  return (
+    <>
+      <div className={`flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 ${big ? 'text-[15px] [&_.text-\[11px\]]:text-[13px] [&_.text-\[13px\]]:text-[15px] [&_.text-xs]:text-[13px] [&_p]:text-[15px]' : ''}`}>
+        {msgs.length === 0 && (
+          <div className="space-y-3">
+            <p className={big ? 'text-[15px] text-slate-300' : 'text-sm text-slate-300'}>Ask me about looms, beams, production or efficiency. English and Hinglish both work{SpeechRec ? ', and you can tap the mic to speak' : ''}.</p>
+            <div className="flex flex-wrap gap-2">
+              {SUGGESTIONS.map((c) => (
+                <button key={c} onClick={() => ask(c)} className={chip}>{c}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {msgs.map((m, i) => <Bubble key={i} m={m} onAsk={ask} />)}
+        <div ref={endRef} />
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); ask(text) }} className={`flex gap-2 border-t border-white/10 ${big ? 'p-2.5' : 'p-3'}`}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          enterKeyHint="send"
+          placeholder={listening ? 'Listening…' : 'e.g. WJ-12, beam plan, yesterday'}
+          className={`min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 outline-none placeholder:text-slate-500 focus:border-cyan-400 ${big ? 'h-12 text-[16px]' : 'py-2 text-sm'}`}
+        />
+        {SpeechRec && (
+          <button type="button" onClick={listen} aria-label="Speak" title="Speak your question" className={`flex items-center justify-center rounded-xl ${big ? 'w-12' : 'px-3'} ${listening ? 'animate-pulse bg-rose-500 text-white' : 'bg-white/10 text-slate-200 hover:bg-white/15'}`}><Mic size={big ? 20 : 16} /></button>
+        )}
+        <button type="submit" aria-label="Send" className={`flex items-center justify-center rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400 ${big ? 'w-12' : 'px-3'}`}><Send size={big ? 20 : 16} /></button>
+      </form>
+    </>
+  )
+}
+
+/** Floating "Ask" button + panel (desktop / tablet). On phones the Ask tab is used instead. */
+export default function Assistant() {
+  const mode = useFactoryStore((s) => s.mode)
+  const phoneMode = useFactoryStore((s) => s.phoneMode)
+  const { mobile } = useViewport()
+  const [open, setOpen] = useState(false)
+
+  if (phoneMode || mode === 'walk' || mode === 'fly' || mode === 'present') return null
 
   if (!open)
     return (
@@ -105,29 +207,7 @@ export default function Assistant() {
         <div className="flex items-center gap-2 text-sm font-semibold"><Bot size={16} /> Factory assistant</div>
         <button onClick={() => setOpen(false)} aria-label="Close" className="rounded p-1 hover:bg-white/10"><X size={16} /></button>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        {msgs.length === 0 && (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-300">Ask me about looms, beams, production or efficiency. English and Hinglish both work.</p>
-            <div className="flex flex-wrap gap-1.5">
-              {SUGGESTIONS.map((c) => (
-                <button key={c} onClick={() => ask(c)} className="rounded-full border border-white/15 px-2.5 py-1 text-xs text-slate-300 hover:bg-white/10">{c}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {msgs.map((m, i) => <Bubble key={i} m={m} onAsk={ask} />)}
-        <div ref={endRef} />
-      </div>
-      <form onSubmit={(e) => { e.preventDefault(); ask(text) }} className="flex gap-2 border-t border-white/10 p-3">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="e.g. WJ-12, beams finishing, kitna kapda"
-          className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-slate-500 focus:border-cyan-400"
-        />
-        <button type="submit" aria-label="Send" className="rounded-lg bg-cyan-500 px-3 text-slate-950 hover:bg-cyan-400"><Send size={16} /></button>
-      </form>
+      <ChatBody />
     </div>
   )
 }

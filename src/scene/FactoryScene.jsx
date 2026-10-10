@@ -10,6 +10,7 @@ import ShedDetails from './ShedDetails'
 import Vehicles from './Vehicles'
 import FloorMarkings from './FloorMarkings'
 import ProductionZone from './ProductionZone'
+import HeatmapLayer from './HeatmapLayer'
 import { YarnStore, FinishedGoods } from './StoreZones'
 import Exterior from './Exterior'
 import WorkersLayer from './WorkersLayer'
@@ -93,6 +94,7 @@ function Factory() {
       <ShedDetails />
       <FloorMarkings />
       <ProductionZone />
+      <HeatmapLayer />
       <YarnStore />
       <FinishedGoods />
       <Exterior />

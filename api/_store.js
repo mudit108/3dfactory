@@ -27,3 +27,23 @@ export function sameSecret(given, expected) {
 
 export const KEY = 'ems:latest'
 export const STALE_SECONDS = 90 // factory PC sends every ~4 s; after this the app shows EMS OFFLINE
+
+/** Several Redis commands in one HTTP request (Upstash /pipeline). Returns the results in order. */
+export async function redisPipeline(commands) {
+  if (!URL_() || !TOKEN()) throw new Error('Redis is not connected to this Vercel project (Storage > Upstash Redis)')
+  const res = await fetch(`${URL_().replace(/\/$/, '')}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${TOKEN()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(commands),
+  })
+  if (!res.ok) throw new Error(`Redis HTTP ${res.status}`)
+  const json = await res.json()
+  return json.map((r) => {
+    if (r.error) throw new Error(r.error)
+    return r.result
+  })
+}
+
+export const HIST_PREFIX = 'ems:hist:' // + YYYY-MM-DD (India) → hash { bucket: sample JSON }
+export const DAY_PREFIX = 'ems:day:' // + YYYY-MM-DD → cached totals for a finished day
+export const KEEP_SECONDS = 60 * 60 * 24 * 45 // keep 45 days

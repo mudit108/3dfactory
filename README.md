@@ -105,3 +105,18 @@ src/
 ## Live data from the Surat EMS
 
 The EMS is a web app (not a JSON API), so a small read-only bridge in `bridge/` logs in and converts its live stream. See `bridge/README.md`. Looms (status, efficiency, RPM, picks, stops, fabric) are live; operators, water pressure, power, stock and accounts stay demo/settings-driven until connected.
+
+## Reports, history and the assistant (added Oct 2026)
+
+- **History**: every 5 minutes `api/ems-push.js` saves a small snapshot of all looms in Upstash Redis (`ems:hist:YYYY-MM-DD`, kept 45 days). `api/history.js` turns them into per-day and per-loom totals. Nothing to set up — it starts as soon as this version is deployed and the bridge is pushing.
+- **Reports** (toolbar → Reports, key `R`): Today by hour, last 7 days, loom ranking (CSV download), operators, beam plan. *Copy report* gives a text summary for WhatsApp.
+- **Heatmap** (key `C`): colours the floor under each loom by efficiency, production, stops or beam finish time.
+- **Assistant** (Ask button): rule-based, free, works offline from the live data. Voice input in Chrome/Android/Safari.
+- **Install as app**: the site is a PWA — "Install app" in the menu (Android/desktop Chrome) or Safari → Share → Add to Home Screen.
+- **Free-tier budget**: the bridge pushes every 15 s (`PUSH_MS`) and `/api/ems` is edge-cached for 15 s (the site refreshes every 15 s), which keeps Upstash under its 500K commands/month free limit.
+
+## Phone layout
+
+Phones (under 768 px wide) get a normal app with bottom tabs — `src/ui/PhoneApp.jsx`:
+Home (big numbers, needs-attention list, operators, quick actions) · Looms (search, filters, sort, a card per loom → full loom page) · 3D view (the factory, loaded only on this tab) · Reports · Ask.
+Tablets and computers keep the full 3D layout.

@@ -3,6 +3,7 @@ import { getFactorySnapshot, subscribeToLiveUpdates } from '../services/factoryA
 import { loadSettings } from '../services/settingsService'
 import { useFactoryStore } from './useFactoryStore'
 import { readViewport } from './useViewport'
+import { fetchHistory, HISTORY_MODE } from '../services/historyApi'
 
 /** Loads the factory snapshot once and keeps machine data live. */
 export function useFactoryData() {
@@ -14,6 +15,22 @@ export function useFactoryData() {
     const onSummary = (e) => useFactoryStore.getState().setEmsSummary(e.detail)
     window.addEventListener('ems-summary', onSummary)
     return () => window.removeEventListener('ems-summary', onSummary)
+  }, [])
+
+  // saved history for Reports + assistant: on start, then every 5 minutes
+  useEffect(() => {
+    if (HISTORY_MODE === 'none') return
+    let alive = true
+    const load = () =>
+      fetchHistory(7)
+        .then((h) => alive && useFactoryStore.getState().setHistory(h))
+        .catch((e) => alive && useFactoryStore.getState().setHistoryError(e.message))
+    load()
+    const t = setInterval(load, 5 * 60000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
   }, [])
 
   useEffect(() => {

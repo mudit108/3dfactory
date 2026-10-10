@@ -88,6 +88,26 @@ export const useFactoryStore = create((set, get) => ({
   toggleLabels: () => set((s) => ({ showLabels: !s.showLabels })),
   toggleFlow: () => set((s) => ({ showFlow: !s.showFlow })),
   setQuality: (q) => set({ quality: q }),
+  // ---- reports / history / heatmap ----
+  history: null, // { mode, today, days, at } from services/historyApi
+  historyError: null,
+  setHistory: (history) => set({ history, historyError: null }),
+  setHistoryError: (historyError) => set({ historyError }),
+  reportsOpen: false,
+  reportsTab: 'today',
+  setReportsOpen: (reportsOpen, reportsTab) => set((st) => ({ reportsOpen, reportsTab: reportsTab || st.reportsTab })),
+  colorBy: 'off', // floor heatmap under the looms: 'off' | 'efficiency' | 'production' | 'stops' | 'beam'
+  setColorBy: (colorBy) => set({ colorBy }),
+  // ---- phone app (bottom tabs) ----
+  phoneMode: false, // true while the phone layout is on screen
+  setPhoneMode: (phoneMode) => (get().phoneMode !== phoneMode ? set({ phoneMode }) : null),
+  phoneTab: 'home', // 'home' | 'looms' | '3d' | 'reports' | 'ask'
+  setPhoneTab: (phoneTab) => set({ phoneTab }),
+  phoneLoom: null, // loom id open in the phone detail page
+  setPhoneLoom: (phoneLoom) => set({ phoneLoom }),
+  // assistant chat (kept here so it survives switching tabs)
+  chat: [],
+  setChat: (updater) => set((st) => ({ chat: typeof updater === 'function' ? updater(st.chat) : updater })),
   helpOpen: false,
   setHelpOpen: (helpOpen) => set({ helpOpen }),
   sceneReady: false,

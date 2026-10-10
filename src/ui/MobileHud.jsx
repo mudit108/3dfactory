@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import {
   Menu, X, Footprints, Plane, Presentation, Eye, EyeOff, Tag, Workflow, Volume2, VolumeX, Gauge, Maximize, Minimize,
-  Settings, CircleHelp,
+  Settings, CircleHelp, BarChart3, Flame, Share2, Download,
 } from 'lucide-react'
+import { HEAT_MODES, nextHeat } from './heatScale'
+import { useCanInstall, promptInstall, shareSite, isIOS } from '../services/pwa'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { useDataMode } from '../services/factoryApi'
 import { Logo, useClock, useSummary, NavMenu, toggleSound } from './Hud'
@@ -87,7 +89,8 @@ function SheetButton({ icon: Icon, label, sub, active, onClick }) {
 }
 
 function MobileMenu({ open, onClose }) {
-  const { mode, setMode, showLabels, toggleLabels, showFlow, toggleFlow, openView, toggleOpenView, quality, setQuality, soundOn } = useFactoryStore()
+  const { mode, setMode, showLabels, toggleLabels, showFlow, toggleFlow, openView, toggleOpenView, quality, setQuality, soundOn, colorBy } = useFactoryStore()
+  const installable = useCanInstall()
   const [fs, setFs] = useState(false)
   const canFs = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
   useEffect(() => {
@@ -146,6 +149,13 @@ function MobileMenu({ open, onClose }) {
             />
           )}
         </div>
+        <div className="mb-1 mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Reports</div>
+        <div className="grid grid-cols-3 gap-2 [@media(orientation:landscape)]:grid-cols-6">
+          <SheetButton icon={BarChart3} label="Reports" sub="Trends, beams, operators" onClick={run(() => st().setReportsOpen(true))} />
+          <SheetButton icon={Flame} label="Heatmap" sub={HEAT_MODES.find((h) => h.id === colorBy)?.label} active={colorBy !== 'off'} onClick={run(() => st().setColorBy(nextHeat(colorBy)), false)} />
+          <SheetButton icon={Share2} label="Share" sub="Send the link" onClick={run(shareSite)} />
+          {(installable || isIOS()) && <SheetButton icon={Download} label="Install app" sub="Add to home screen" onClick={run(promptInstall)} />}
+        </div>
         <div className="mb-3 mt-3 grid grid-cols-2 gap-2 [@media(orientation:landscape)]:grid-cols-4">
           <SheetButton icon={Settings} label="Settings" sub="Operators, attendance, looms" onClick={run(() => st().setSettingsOpen(true))} />
           <SheetButton icon={CircleHelp} label="Help" sub="Touch controls" onClick={run(() => st().setHelpOpen(true))} />
@@ -156,7 +166,7 @@ function MobileMenu({ open, onClose }) {
 }
 
 /** Header + status + view chips for phones (portrait and landscape). */
-export default function MobileHud({ landscape }) {
+export default function MobileHud({ landscape, compact = false }) {
   const mode = useFactoryStore((s) => s.mode)
   const selected = useFactoryStore((s) => s.selected)
   const [menu, setMenu] = useState(false)
@@ -170,7 +180,7 @@ export default function MobileHud({ landscape }) {
         <div className={landscape ? 'w-[min(340px,46vw)]' : ''}>
           <MobileHeader onMenu={() => setMenu(true)} />
         </div>
-        {!(landscape && selected) && (
+        {!compact && !(landscape && selected) && (
           <div className={landscape ? 'w-[min(360px,44vw)]' : ''}>
             <StatusStrip />
           </div>

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutGrid, Factory, Package, Boxes, Calculator, Briefcase, Truck, Footprints, Presentation, Tag, Workflow,
-  Gauge, Maximize, Minimize, CircleHelp, Activity, Users, Zap, ArrowRight, Radio, Layers, Search, Plane, Eye, EyeOff, Scan, Cog, Settings, Volume2, VolumeX,
+  Gauge, Maximize, Minimize, CircleHelp, Activity, Users, Zap, ArrowRight, Radio, Layers, Search, Plane, Eye, EyeOff, Scan, Cog, Settings, Volume2, VolumeX, BarChart3, Flame, Share2, Download,
 } from 'lucide-react'
+import { useCanInstall, promptInstall, shareSite } from '../services/pwa'
+import { HEAT_MODES, nextHeat } from './heatScale'
 import { factorySound } from '../services/factorySound'
 import { useFactoryStore, computeSummary } from '../hooks/useFactoryStore'
 import { goToView } from '../scene/focus'
@@ -110,6 +112,8 @@ export function Toolbar() {
   }, [])
   const nextQ = { high: 'balanced', balanced: 'performance', performance: 'high' }
   const soundOn = useFactoryStore((s) => s.soundOn)
+  const colorBy = useFactoryStore((s) => s.colorBy)
+  const installable = useCanInstall()
   return (
     <div className="glass pointer-events-auto flex flex-wrap items-center gap-0.5 rounded-2xl p-1">
       <ToolButton
@@ -160,7 +164,18 @@ export function Toolbar() {
         iconOnly
         onClick={() => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}
       />
+      <div className="mx-1 h-6 w-px bg-white/10" />
+      <ToolButton icon={BarChart3} label="Reports" kbd="R" onClick={() => useFactoryStore.getState().setReportsOpen(true)} />
+      <ToolButton
+        icon={Flame}
+        label={colorBy === 'off' ? 'Heatmap' : HEAT_MODES.find((h) => h.id === colorBy)?.label}
+        kbd="C"
+        active={colorBy !== 'off'}
+        onClick={() => useFactoryStore.getState().setColorBy(nextHeat(colorBy))}
+      />
       <ToolButton icon={Settings} label="Settings" onClick={() => useFactoryStore.getState().setSettingsOpen(true)} kbd="," />
+      <ToolButton icon={Share2} label="Share link" onClick={shareSite} iconOnly />
+      {installable && <ToolButton icon={Download} label="Install app" onClick={promptInstall} iconOnly />}
       <ToolButton icon={CircleHelp} label="Help" onClick={() => setHelpOpen(true)} kbd="H" iconOnly />
     </div>
   )
@@ -272,8 +287,8 @@ export function StatusPanel({ compact = false }) {
               {(s.ems.beamsSoon || []).slice(0, 4).map((b) => (
                 <div key={b.id} className="flex items-center justify-between text-[11px] text-slate-300">
                   <span className="font-semibold">{b.id}</span>
-                  <span className="tabular-nums text-sky-300">{b.etaHours < 48 ? `${Math.floor(b.etaHours)} h ${Math.round((b.etaHours % 1) * 60)} m` : `${(b.etaHours / 24).toFixed(1)} days`}</span>
-                  <span className="tabular-nums text-slate-500">{Math.round(b.beamMeters)} m</span>
+                  <span className="tabular-nums text-sky-300">{b.etaHours <= 0 ? 'due now' : b.etaHours < 48 ? `${Math.floor(b.etaHours)} h ${Math.round((b.etaHours % 1) * 60)} m` : `${(b.etaHours / 24).toFixed(1)} days`}</span>
+                  <span className="tabular-nums text-slate-500">{b.beamMeters <= 0 ? `+${Math.round(-b.beamMeters)} m over` : `${Math.round(b.beamMeters)} m`}</span>
                 </div>
               ))}
               <div className="mt-1.5 border-t border-white/5 pt-1.5 text-[10px] text-slate-400">

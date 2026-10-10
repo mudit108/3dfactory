@@ -3,6 +3,8 @@ import { redis, KEY, STALE_SECONDS } from './_store.js'
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
+  // Vercel's edge keeps one copy for 15 s, so many open screens cost one Redis read per 15 s
+  res.setHeader('Vercel-CDN-Cache-Control', 'max-age=15')
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
   let raw
   try {

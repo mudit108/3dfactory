@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useFactoryStore } from '../hooks/useFactoryStore'
 import { focusOnKey } from '../scene/focus'
+import { showLoomIn3D } from './navigate'
 import { inr, inrShort, num, hhmm, STATUS_STYLES } from './format'
 import { RadialGauge, BarChart, LineChart, Donut, ProgressBar, StackedBar } from './charts'
 import { useSummary } from './Hud'
@@ -82,8 +83,13 @@ function ActionButton({ icon: Icon, children, onClick }) {
 const selectWorker = (id) => {
   const st = useFactoryStore.getState()
   st.select({ type: 'worker', id, key: `worker:${id}` })
-  setTimeout(() => focusOnKey(`worker:${id}`), 0)
+  if (st.phoneMode) {
+    st.setPhoneLoom(null)
+    st.setPhoneTab('3d')
+  }
+  setTimeout(() => focusOnKey(`worker:${id}`), st.phoneMode ? 900 : 0)
 }
+const focusLoom = (id) => (useFactoryStore.getState().phoneMode ? showLoomIn3D(id) : focusOnKey(`machine:${id}`))
 const selectMachine = (id) => {
   const st = useFactoryStore.getState()
   st.select({ type: 'machine', id, key: `machine:${id}` })
@@ -93,6 +99,7 @@ const selectMachine = (id) => {
 // ---- panels ------------------------------------------------------------------------
 const fmtEta = (h) => {
   if (h === undefined || h === null || !Number.isFinite(h)) return '-'
+  if (h <= 0) return 'Due now (past planned length)'
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`
   if (h < 48) return `${Math.floor(h)} h ${Math.round((h % 1) * 60)} m`
   return `${(h / 24).toFixed(1)} days`
@@ -199,14 +206,14 @@ function LiveMachinePanel({ m, op }) {
         </div>
       </Section>
       <div className="mt-4 flex gap-2">
-        <ActionButton icon={Crosshair} onClick={() => focusOnKey(`machine:${m.id}`)}>Focus</ActionButton>
+        <ActionButton icon={Crosshair} onClick={() => focusLoom(m.id)}>{useFactoryStore.getState().phoneMode ? 'Show in 3D' : 'Focus'}</ActionButton>
         {op && <ActionButton icon={User} onClick={() => selectWorker(op.id)}>Operator</ActionButton>}
       </div>
     </>
   )
 }
 
-function MachinePanel({ id }) {
+export function MachinePanel({ id }) {
   const m = useFactoryStore((s) => s.machines.find((x) => x.id === id))
   const op = useFactoryStore((s) => s.staffing?.machineOperator[id])
   if (!m) return null
@@ -279,7 +286,7 @@ function MachinePanel({ id }) {
         </div>
       </Section>
       <div className="mt-4 flex gap-2">
-        <ActionButton icon={Crosshair} onClick={() => focusOnKey(`machine:${m.id}`)}>Focus</ActionButton>
+        <ActionButton icon={Crosshair} onClick={() => focusLoom(m.id)}>{useFactoryStore.getState().phoneMode ? 'Show in 3D' : 'Focus'}</ActionButton>
         {op && <ActionButton icon={User} onClick={() => selectWorker(op.id)}>Operator</ActionButton>}
       </div>
     </>
@@ -815,12 +822,12 @@ const PANELS = {
   manager: ManagerPanel, truck: TruckPanel, entrance: EntrancePanel, inspection: InspectionPanel,
 }
 
-export default function DetailPanel({ mobile = false, landscape = false }) {
+export default function DetailPanel({ mobile = false, landscape = false, startCollapsed = false }) {
   const selected = useFactoryStore((s) => s.selected)
   const clear = useFactoryStore((s) => s.clearSelection)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(startCollapsed)
   const drag = useRef(null)
-  useEffect(() => setCollapsed(false), [selected?.key])
+  useEffect(() => setCollapsed(startCollapsed), [selected?.key, startCollapsed])
   if (!selected) return null
   const P = PANELS[selected.type]
   if (!P) return null

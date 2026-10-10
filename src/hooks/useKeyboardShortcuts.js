@@ -3,13 +3,14 @@ import { useFactoryStore } from './useFactoryStore'
 import { NAV_VIEWS } from '../data/layout'
 import { goToView } from '../scene/focus'
 import { toggleSound } from '../ui/Hud'
+import { nextHeat } from '../ui/heatScale'
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const st = useFactoryStore.getState()
-      if (st.settingsOpen) return
+      if (st.settingsOpen || st.reportsOpen) return
       if (e.code === 'KeyM') {
         toggleSound()
         return
@@ -45,6 +46,12 @@ export function useKeyboardShortcuts() {
           break
         case 'KeyF':
           st.toggleFlow()
+          break
+        case 'KeyR':
+          st.setReportsOpen(true)
+          break
+        case 'KeyC':
+          st.setColorBy(nextHeat(st.colorBy))
           break
         case 'KeyH':
           st.setHelpOpen(!st.helpOpen)

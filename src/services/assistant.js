@@ -1,3 +1,7 @@
+import { beamPlan, operatorStats, fmtEtaShort } from './planning'
+import { combineDays } from '../shared/historyMath'
+import { dailyReportText } from './reportText'
+
 // Factory assistant: answers questions from the live numbers on screen. No AI service, no cost, no
 // internet call - it reads the same data the 3D factory already has and works out the answers in code,
 // so it cannot make things up. Understands English plus common Hindi/Gujarati words written in English.
@@ -12,6 +16,7 @@ const fmtMin = (min) => {
 }
 const fmtEta = (h) => {
   if (!Number.isFinite(h)) return '-'
+  if (h <= 0) return 'due now'
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`
   if (h < 48) return `${Math.floor(h)} h ${String(Math.round((h % 1) * 60)).padStart(2, '0')} m`
   return `${(h / 24).toFixed(1)} days`
@@ -23,7 +28,7 @@ const sum = (a, f) => a.reduce((s, x) => s + (f(x) || 0), 0)
 const avg = (a, f) => (a.length ? sum(a, f) / a.length : 0)
 const has = (q, ...words) => words.some((w) => q.includes(w))
 
-export const SUGGESTIONS = ['Factory summary', 'Which looms are stopped?', 'Beams finishing first', 'Production today', 'Lowest efficiency', 'Spare beams']
+export const SUGGESTIONS = ['Factory summary', 'Which looms are stopped?', 'Beam plan', 'Production today', 'Yesterday', 'Lowest efficiency', 'Operator ranking', 'WhatsApp report']
 
 /** Pulls a loom number out of the question: "WJ-12", "loom 5", "machine no 7", or just "12". */
 function findLoom(q, machines) {
@@ -45,7 +50,8 @@ function loomReport(m, ctx) {
   lines.push(`Production today ${nf(m.production, 1)} m${m.targetToday ? ` of about ${nf(m.targetToday)} m possible` : ''}. Stops: ${nf(stopsOf(m))}.`)
   if (m.fabric) lines.push(`Fabric: ${m.fabric}.`)
   if (Number.isFinite(m.beamMeters)) {
-    lines.push(`Beam${m.beamNo ? ` ${m.beamNo}` : ''}: ${nf(m.beamMeters, 0)} m left${m.beamTotal ? ` of ${nf(m.beamTotal)} m` : ''}${Number.isFinite(m.etaHours) ? `, finishes in ${fmtEta(m.etaHours)} (${clockAt(m.etaAt)})` : ''}.`)
+    if (m.beamMeters <= 0) lines.push(`Beam${m.beamNo ? ` ${m.beamNo}` : ''} has run ${nf(-m.beamMeters, 0)} m past its planned ${m.beamTotal ? nf(m.beamTotal) + ' m' : 'length'} in the EMS. It can finish any time; check the loom and the beam length entered in the EMS.`)
+    else lines.push(`Beam${m.beamNo ? ` ${m.beamNo}` : ''}: ${nf(m.beamMeters, 0)} m left${m.beamTotal ? ` of ${nf(m.beamTotal)} m` : ''}${Number.isFinite(m.etaHours) ? `, finishes in ${fmtEta(m.etaHours)} (${clockAt(m.etaAt)})` : ''}.`)
   }
   if (m.beamLow) lines.push('Beam alert: this beam is almost finished.')
   if (m.alert === 'red') lines.push('EMS alert: Manual stop.')
@@ -67,7 +73,7 @@ function overview(ctx) {
   const low = machines.filter((m) => m.beamLow)
   if (low.length) lines.push(`${low.length} looms have a beam almost finished (${low.slice(0, 4).map((m) => loomNo(m.id)).join(', ')}${low.length > 4 ? '…' : ''}).`)
   const next = machines.filter((m) => Number.isFinite(m.etaHours)).sort((a, b) => a.etaHours - b.etaHours)[0]
-  if (next) lines.push(`Next beam to finish: ${next.id} in ${fmtEta(next.etaHours)}.`)
+  if (next) lines.push(next.etaHours <= 0 || next.beamMeters <= 0 ? `Beam due now on ${next.id} (past the length entered in the EMS).` : `Next beam to finish: ${next.id} in ${fmtEta(next.etaHours)}.`)
   const spare = s?.spareBeams
   if (Array.isArray(spare)) lines.push(`Spare beams in store: ${spare.length}${s.spareMeters ? ` (${nf(s.spareMeters)} m)` : ''}.`)
   if (staffing) lines.push(`Operators present: ${staffing.present.length} (need ${staffing.requiredOperators})${staffing.uncovered.length ? `, ${staffing.uncovered.length} looms without an operator` : ''}.`)
@@ -124,7 +130,7 @@ function beamReport(ctx) {
   lines.push('Beams finishing first (estimate):')
   return {
     lines,
-    rows: list.slice(0, 8).map((m) => ({ ...row(m, fmtEta(m.etaHours), m.beamLow ? 'bad' : undefined), sub: `${nf(m.beamMeters, 0)} m left${m.beamNo ? ` · beam ${m.beamNo}` : ''}` })),
+    rows: list.slice(0, 8).map((m) => ({ ...row(m, fmtEta(m.etaHours), m.beamLow ? 'bad' : undefined), sub: `${m.beamMeters <= 0 ? `${nf(-m.beamMeters, 0)} m past planned length` : `${nf(m.beamMeters, 0)} m left`}${m.beamNo ? ` · beam ${m.beamNo}` : ''}` })),
     chips: ['Spare beams', 'Factory summary'],
   }
 }
@@ -189,9 +195,84 @@ function runningReport(ctx) {
   return { lines: [`${run.length} of ${ctx.machines.length} looms are running (${Math.round((run.length / Math.max(1, ctx.machines.length)) * 100)}%).`], chips: ['Which looms are stopped?', 'Factory summary'] }
 }
 
+// ---------- history, planning, reports ----------
+const dayName = (d) => new Date(`${d}T12:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+
+function noHistory(ctx) {
+  if (!ctx.history) return { lines: ['History is not loaded. It is saved only on the online version, every 5 minutes while the factory PC bridge runs.'], chips: ['Factory summary'] }
+  return { lines: ['No saved history for that day yet. Snapshots are saved every 5 minutes while the factory PC bridge runs.'], chips: ['Factory summary'] }
+}
+
+function yesterdayReport(ctx) {
+  const y = ctx.history?.days?.[0]
+  if (!y) return noHistory(ctx)
+  const best = [...y.looms].sort((a, b) => b.prod - a.prod).slice(0, 3)
+  const worst = [...y.looms].filter((l) => l.prod >= 0).sort((a, b) => b.downMin - a.downMin).slice(0, 5)
+  return {
+    lines: [
+      `${dayName(y.date)}: ${nf(y.prod)} m made, average efficiency ${nf(y.eff, 1)}%, on average ${nf(y.running, 1)} of ${y.total} looms running.`,
+      `Total stops ${nf(y.stops)}, ${nf(y.downHours, 1)} loom-hours stopped.${y.hoursCovered < 20 ? ` (Only ${nf(y.hoursCovered, 1)} h were recorded.)` : ''}`,
+      `Best: ${best.map((l) => `${l.id} ${nf(l.prod)} m`).join(', ')}. Stopped longest:`,
+    ],
+    rows: worst.map((l) => ({ id: l.id, left: l.id, sub: `${nf(l.prod)} m · ${nf(l.eff, 1)}% · ${nf(l.stops)} stops`, right: `${nf(l.downMin / 60, 1)} h down`, tone: l.downMin > 180 ? 'bad' : undefined })),
+    chips: ['Last 7 days', 'Production today', 'Open reports'],
+  }
+}
+
+function weekReport(ctx) {
+  const days = ctx.history?.days || []
+  if (!days.length) return noHistory(ctx)
+  const total = sum(days, (d) => d.prod)
+  const best = days.reduce((a, d) => (d.prod > a.prod ? d : a), days[0])
+  const lines = [`Last ${days.length === 1 ? 'day' : `${days.length} days`}: ${nf(total)} m in total, about ${nf(total / days.length)} m per day.`, `Best day ${dayName(best.date)} with ${nf(best.prod)} m.`]
+  const t = ctx.history?.today
+  if (t?.samples) lines.push(`Today so far: ${nf(t.prod)} m at ${nf(t.eff, 1)}% average efficiency.`)
+  if (days.length >= 2) {
+    const [a, b] = days
+    const ch = b.prod ? ((a.prod - b.prod) / b.prod) * 100 : 0
+    lines.push(`Yesterday vs the day before: ${ch >= 0 ? 'up' : 'down'} ${nf(Math.abs(ch), 0)}%.`)
+  }
+  return {
+    lines,
+    rows: days.map((d) => ({ left: dayName(d.date), sub: `eff ${nf(d.eff, 1)}% · ${nf(d.stops)} stops`, right: `${nf(d.prod)} m` })),
+    chips: ['Yesterday', 'Open reports'],
+  }
+}
+
+function beamPlanReport(ctx) {
+  const plan = beamPlan(ctx.machines, ctx.summary)
+  if (!plan.items.length) return { lines: ['No beam data yet. It comes from the live EMS through the factory PC bridge.'], chips: ['Factory summary'] }
+  const g = plan.groups
+  const lines = [`Beam changes: ${g.now.length} due now, ${g.h24.length} in the next 24 h, ${g.h48.length} in 24 to 48 h.`]
+  if (plan.spare) lines.push(`Spare beams in store: ${plan.spare.length} (${nf(plan.spareMeters)} m).`)
+  lines.push(...plan.warnings)
+  if (!plan.warnings.length) lines.push('Nothing to worry about in the next 2 days.')
+  return {
+    lines,
+    rows: [...g.now, ...g.h24, ...g.h48].slice(0, 10).map((i) => ({ id: i.id, left: i.id, sub: `${i.beamNo ? 'beam ' + i.beamNo + ' · ' : ''}${i.spare ? 'spare ' + i.spare : plan.spare ? 'no matching spare' : ''}`, right: i.over ? `${nf(i.over)} m over` : fmtEtaShort(i.eta), tone: i.eta <= 0 ? 'bad' : undefined })),
+    chips: ['Spare beams', 'Open reports'],
+  }
+}
+
+function operatorRanking(ctx) {
+  const week = ctx.history?.days?.length ? combineDays(ctx.history.days) : null
+  const list = operatorStats(ctx.machines, ctx.staffing, week)
+  if (!list.length) return { lines: ['No operators are marked present this shift. Mark attendance in Settings → Attendance.'], chips: ['Factory summary'] }
+  return {
+    lines: [`Operators this shift, best efficiency first:`],
+    rows: list.map((o) => ({ left: o.op.name, sub: `looms ${o.looms.map(loomNo).join(', ')} · ${o.running}/${o.looms.length} running`, right: `${nf(o.eff, 1)}% · ${nf(o.prod)} m`, tone: o.eff < 65 ? 'bad' : o.eff >= 80 ? 'good' : undefined })),
+    chips: ['Operators', 'Open reports'],
+  }
+}
+
+function textReport(ctx) {
+  const text = dailyReportText(ctx)
+  return { lines: text.split('\n').filter(Boolean).map((l) => l.replace(/\*/g, '')), copy: text, chips: ['Open reports'] }
+}
+
 function help() {
   return {
-    lines: ['I read the live factory numbers and answer from them. Try asking:', '- "Factory summary" or "morning report"', '- "Which looms are stopped?"', '- "Beams finishing first" / "spare beams"', '- "Production today", "lowest efficiency", "most stops"', '- "How is loom 12?" or "WJ-07"', '- "Which looms run MILTON?", "who is on loom 5?", "alerts"'],
+    lines: ['I read the live factory numbers and answer from them. Try asking:', '- "Factory summary" or "morning report"', '- "Which looms are stopped?"', '- "Beams finishing first" / "spare beams"', '- "Production today", "lowest efficiency", "most stops"', '- "How is loom 12?" or "WJ-07"', '- "Which looms run MILTON?", "who is on loom 5?", "alerts"', '- "Yesterday", "last 7 days", "beam plan", "operator ranking"', '- "WhatsApp report", "open reports", "heatmap efficiency"'],
     chips: SUGGESTIONS.slice(0, 4),
   }
 }
@@ -214,6 +295,16 @@ export function answer(question, ctx) {
     return done({ lines: [op ? `${loom.id} is looked after by ${op.name}.` : `No operator is assigned to ${loom.id} today.`], focus: loom.id })
   }
 
+  if (has(q, 'open report', 'reports', 'chart', 'graph')) return done({ lines: ['Opening Reports.'], action: { type: 'reports' } })
+  if (has(q, 'heatmap', 'heat map', 'colour by', 'color by', 'colour', 'color')) {
+    const id = has(q, 'off', 'hide', 'band') ? 'off' : has(q, 'prod', 'meter') ? 'production' : has(q, 'stop') ? 'stops' : has(q, 'beam') ? 'beam' : 'efficiency'
+    return done({ lines: [id === 'off' ? 'Heatmap turned off.' : `Floor coloured by ${id}. The legend is at the top of the screen.`], action: { type: 'heatmap', id } })
+  }
+  if (has(q, 'whatsapp', 'text report', 'daily report', 'copy report', 'share report', 'report bhej')) return done(textReport(ctx))
+  if (has(q, 'yesterday', 'kal ka', 'kal ', 'last day', 'previous day')) return done(yesterdayReport(ctx))
+  if (has(q, 'week', '7 day', 'seven day', 'hafta', 'trend', 'last days', 'history', 'pichle')) return done(weekReport(ctx))
+  if (has(q, 'beam plan', 'plan', 'enough beam', 'need beam', 'beams needed', 'beam change', 'prepare')) return done(beamPlanReport(ctx))
+  if (has(q, 'operator rank', 'best operator', 'operator performance', 'operator report', 'operators rank', 'top operator', 'worst operator', 'ranking')) return done(operatorRanking(ctx))
   if (has(q, 'spare', 'store', 'godown', 'stock beam', 'beam stock', 'beams in stock', 'new beam')) return done(spareBeams(ctx))
   if (has(q, 'beam', 'warp', 'tar ', 'unload', 'finish', 'khatam', 'complete', 'eta')) return done(beamReport(ctx))
   if (has(q, 'alert', 'manual', 'filler', 'red ', 'blue ')) return done(alertsReport(ctx))
